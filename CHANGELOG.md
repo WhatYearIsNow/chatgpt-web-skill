@@ -1,7 +1,8 @@
 # Changelog
 
-## 0.2.0 — 2026-10-23 (release candidate)
+## 0.2.0 — 2026-10-24
 
+- First public release, with Windows Node 22/24 CI and source archive checksums.
 - Separate public source from personal configuration and runtime records; adopt MIT.
 - Replace implicit sibling-skill imports with an explicit, zero-dependency local CDP transport and optional adapter interface.
 - Share CLI validation, task state, structured results, cleanup and one-send behavior across six commands.

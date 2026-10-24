@@ -96,7 +96,7 @@ private-file upload or image generation.
 
 ## Platform scope
 
-Windows local and remote CI acceptance is complete for this candidate. Linux
+Windows local and remote CI acceptance is complete for this release. Linux
 checks remain deferred at the user's request; macOS is unverified. Neither
 platform has an enabled CI job in this phase. The successful Windows jobs do not
 establish support for those platforms.

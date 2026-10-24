@@ -2,7 +2,7 @@
 
 Report reproducible bugs with the command name, Node/browser versions, error code and a minimal synthetic fixture. Remove email addresses, conversation IDs, cookies, local file paths, account labels and prompt text from logs before sharing.
 
-Do not post secrets in a public issue. For a sensitive finding, use the repository's private vulnerability reporting feature once the maintainer enables it. No private reporting address is bundled in this candidate.
+Do not post secrets in a public issue. For a sensitive finding, use the repository's private vulnerability reporting feature once the maintainer enables it. No private reporting address is bundled in this release.
 
 The CDP endpoint provides extensive control of its browser profile. This tool accepts only loopback endpoints and never copies browser profiles or exports authentication material. An explicit external adapter is executable local configuration and must be trusted.
 

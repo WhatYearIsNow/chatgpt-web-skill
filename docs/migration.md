@@ -1,10 +1,10 @@
 # Migrating local installations
 
-This public candidate intentionally keeps personal runtime state out of its source tree. It is not an in-place account/database installer.
+This public release intentionally keeps personal runtime state out of its source tree. It is not an in-place account/database installer.
 
 1. Stop all old ChatGPT automation processes before switching versions. The old temporary JSON file lock and the new OS-owned lock do not coordinate each other. Do not run old and new task binaries concurrently.
 2. Back up your local skill and its `data/` directory privately. Keep old account lists, reviews, conversation URLs and test outputs out of the public checkout.
-3. Set `CHATGPT_WEB_DATA_DIR` to a private local directory. If preserving history, copy only your own `usage.jsonl` and `quota-state.json` there, validate them locally, and retain the backup. Corrupt or incompatible data now fails instead of being ignored. This candidate does not merge or rewrite your history automatically.
+3. Set `CHATGPT_WEB_DATA_DIR` to a private local directory. If preserving history, copy only your own `usage.jsonl` and `quota-state.json` there, validate them locally, and retain the backup. Corrupt or incompatible data now fails instead of being ignored. This release does not merge or rewrite your history automatically.
 4. Configure `CHATGPT_WEB_CDP_URL` or a trusted `CHATGPT_WEB_BROWSER_MODULE`. The implicit relative import of a neighboring browser skill was removed. Keep the prior installation available until the selected browser connection and consumers are verified.
 5. Test `--help`, `quota --tail 1`, and a harmless `ask`/`followup` before using a real attachment or spending image quota.
 
