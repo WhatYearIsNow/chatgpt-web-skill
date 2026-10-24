@@ -1,0 +1,35 @@
+{
+  "name": "chatgpt-web-skill",
+  "version": "0.2.0",
+  "private": true,
+  "description": "Portable ChatGPT browser delegation skill and CLI with explicit CDP configuration",
+  "type": "module",
+  "license": "MIT",
+  "engines": {
+    "node": ">=22.15.0"
+  },
+  "files": [
+    "SKILL.md",
+    "README.md",
+    "LICENSE",
+    "CHANGELOG.md",
+    "docs/",
+    "agents/",
+    "lib/",
+    "scripts/"
+  ],
+  "scripts": {
+    "test": "node --test tests/*.test.mjs",
+    "test:coverage": "node --experimental-test-coverage --test tests/*.test.mjs",
+    "check": "node scripts/check.mjs",
+    "verify": "npm run check && npm test"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/WhatYearIsNow/chatgpt-web-skill.git"
+  },
+  "homepage": "https://github.com/WhatYearIsNow/chatgpt-web-skill#readme",
+  "bugs": {
+    "url": "https://github.com/WhatYearIsNow/chatgpt-web-skill/issues"
+  }
+}

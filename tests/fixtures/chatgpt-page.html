@@ -1,0 +1,114 @@
+<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><title>Offline mechanical layer fixture</title></head>
+<body>
+  <!-- A deterministic local DOM contract, not a copy of the live ChatGPT UI. -->
+  <main id="conversation"></main>
+  <form id="composer-form">
+    <textarea id="composer" placeholder="Ask ChatGPT"></textarea>
+    <input type="file" aria-label="Attach photos" accept="image/*" multiple>
+    <input type="file" aria-label="Attach files" accept="" multiple>
+    <div id="chips"></div>
+    <button type="button" aria-label="Send">Send</button>
+  </form>
+  <script>
+    const conversation = document.querySelector('#conversation');
+    const composer = document.querySelector('#composer');
+    const chips = document.querySelector('#chips');
+    let serial = 0;
+    let currentTurn = null;
+    const state = window.fixtureState = {};
+
+    function reset() {
+      state.sends = [];
+      state.inputEvents = 0;
+      state.pasteEvents = 0;
+      state.uploadEvents = [];
+      state.pasteMode = 'normal';
+      state.sendMode = 'normal';
+      state.uploadMode = 'all';
+      composer.value = '';
+      chips.replaceChildren();
+      document.querySelector('#fixture-stop')?.remove();
+      currentTurn = null;
+      conversation.innerHTML = '<article data-talvt-turn-state="complete">'
+        + '<div data-chatgpt-search-unit-key="fixture-old:user">Earlier prompt</div>'
+        + '<div data-chatgpt-search-unit-key="fixture-old:assistant">Old completed response</div>'
+        + '</article>';
+      for (const input of document.querySelectorAll('input[type="file"]')) input.value = '';
+    }
+
+    // Synthetic paste has no browser default insertion. This handler models an
+    // editor that explicitly accepts clipboardData and dispatches an input event.
+    composer.addEventListener('paste', event => {
+      event.preventDefault();
+      state.pasteEvents++;
+      const text = event.clipboardData.getData('text/plain');
+      composer.value = state.pasteMode === 'corrupt-tail' ? text.slice(0, -1) + 'X' : text;
+      composer.dispatchEvent(new Event('input', { bubbles: true }));
+    });
+    composer.addEventListener('input', () => { state.inputEvents++; });
+    document.querySelector('#composer-form').addEventListener('submit', event => event.preventDefault());
+
+    for (const input of document.querySelectorAll('input[type="file"]')) {
+      input.addEventListener('change', () => {
+        const files = [...input.files];
+        state.uploadEvents.push({ input: input.getAttribute('aria-label'), names: files.map(file => file.name) });
+        chips.replaceChildren();
+        for (const file of state.uploadMode === 'partial' ? files.slice(0, 1) : files) {
+          const button = document.createElement('button');
+          button.type = 'button';
+          button.setAttribute('aria-label', 'Remove ' + file.name);
+          button.textContent = file.name;
+          button.addEventListener('click', () => button.remove());
+          chips.append(button);
+        }
+      });
+    }
+
+    document.querySelector('button[aria-label="Send"]').addEventListener('click', () => {
+      if (state.sendMode === 'unconfirmed') return;
+      serial++;
+      currentTurn = document.createElement('article');
+      currentTurn.setAttribute('data-talvt-turn-state', 'streaming');
+      const user = document.createElement('div');
+      user.setAttribute('data-chatgpt-search-unit-key', 'fixture-' + serial + ':user');
+      user.textContent = composer.value;
+      currentTurn.append(user);
+      conversation.append(currentTurn);
+      state.sends.push({
+        userKey: user.getAttribute('data-chatgpt-search-unit-key'), text: composer.value,
+        attachments: [...chips.querySelectorAll('button')].map(button => button.getAttribute('aria-label')),
+      });
+      composer.value = '';
+      composer.dispatchEvent(new Event('input', { bubbles: true }));
+    });
+
+    function respond(text, { complete = true, stop = false } = {}) {
+      if (!currentTurn) throw new Error('Fixture has no current turn');
+      let assistant = currentTurn.querySelector('[data-chatgpt-search-unit-key$=":assistant"]');
+      if (!assistant) {
+        assistant = document.createElement('div');
+        assistant.setAttribute('data-chatgpt-search-unit-key', 'fixture-' + serial + ':assistant');
+        currentTurn.append(assistant);
+      }
+      assistant.textContent = text;
+      currentTurn.setAttribute('data-talvt-turn-state', complete ? 'complete' : 'streaming');
+      document.querySelector('#fixture-stop')?.remove();
+      if (stop) {
+        const button = document.createElement('button');
+        button.id = 'fixture-stop';
+        button.setAttribute('aria-label', 'Stop generating');
+        button.textContent = 'Stop';
+        document.body.append(button);
+      }
+    }
+
+    window.fixture = { reset, respond, markComplete() {
+      if (!currentTurn) throw new Error('Fixture has no current turn');
+      currentTurn.setAttribute('data-talvt-turn-state', 'complete');
+    } };
+    reset();
+  </script>
+</body>
+</html>

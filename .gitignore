@@ -1,0 +1,15 @@
+node_modules/
+data/
+state/
+artifacts/
+coverage/
+.env
+.env.*
+!.env.example
+*.log
+*.tmp
+*.tgz
+*.zip
+.DS_Store
+Thumbs.db
+.test-tmp/
