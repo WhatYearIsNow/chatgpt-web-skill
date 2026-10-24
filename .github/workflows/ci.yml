@@ -17,9 +17,6 @@ jobs:
       fail-fast: false
       matrix:
         node: [22, 24]
-    env:
-      CHATGPT_WEB_TEST_TMP_DIR: ${{ runner.temp }}/chatgpt-web-tests
-      CHATGPT_WEB_DATA_DIR: ${{ runner.temp }}/chatgpt-web-runtime
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
@@ -28,6 +25,10 @@ jobs:
       - name: Prepare isolated Windows test environment
         shell: pwsh
         run: |
+          $env:CHATGPT_WEB_TEST_TMP_DIR = Join-Path $env:RUNNER_TEMP 'chatgpt-web-tests'
+          $env:CHATGPT_WEB_DATA_DIR = Join-Path $env:RUNNER_TEMP 'chatgpt-web-runtime'
+          "CHATGPT_WEB_TEST_TMP_DIR=$env:CHATGPT_WEB_TEST_TMP_DIR" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          "CHATGPT_WEB_DATA_DIR=$env:CHATGPT_WEB_DATA_DIR" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
           New-Item -ItemType Directory -Path $env:CHATGPT_WEB_TEST_TMP_DIR -Force | Out-Null
           New-Item -ItemType Directory -Path $env:CHATGPT_WEB_DATA_DIR -Force | Out-Null
           $taskChrome = Join-Path $env:ProgramFiles 'Google/Chrome/Application/chrome.exe'
