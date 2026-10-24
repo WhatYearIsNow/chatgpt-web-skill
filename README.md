@@ -1,12 +1,14 @@
 # ChatGPT Web Skill
 
+[![Windows CI](https://github.com/WhatYearIsNow/chatgpt-web-skill/actions/workflows/ci.yml/badge.svg)](https://github.com/WhatYearIsNow/chatgpt-web-skill/actions/workflows/ci.yml)
+
 仓库：[`WhatYearIsNow/chatgpt-web-skill`](https://github.com/WhatYearIsNow/chatgpt-web-skill) · Skill 名：`chatgpt-web`
 
 可作为 agent skill 或独立 CLI 使用的 ChatGPT 网页自动化工具。支持纯文本、ZIP 附件审查、已有会话续问、参考图生图、本地用量记录，以及显式邮箱验证的 SSO 切号。
 
 **0.2.0 发布候选，MIT，零第三方运行依赖。** 需要 Node.js 22.15+ 和已有的本地 Chromium CDP 端点。它操作网页 UI，不是官方 API 客户端；UI、语言和账号功能变化可能需要更新选择器。
 
-**当前验收状态（2026-10-24）：** Windows Node 22/24 各 154 项测试通过。邮箱 SSO、Google 已有登录、账号恢复及完整单图生成保存已通过真实验收。本版本保留为发布候选，完整范围见 [测试记录](docs/testing.md)。
+**当前验收状态（2026-10-24）：** Windows 本地与 GitHub Actions 的 Node 22/24 均各 154 项测试通过，0 失败、0 跳过。邮箱 SSO、Google 已有登录、账号恢复及完整单图生成保存已通过真实验收。本版本保留为发布候选，完整范围见 [测试记录](docs/testing.md)。
 
 ## 安装与浏览器准备
 

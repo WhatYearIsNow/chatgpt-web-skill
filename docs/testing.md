@@ -16,8 +16,8 @@ published SHA-256 verified. Chrome integration uses a fresh temporary profile,
 loopback HTML and restricted external networking. It is separate from real-site
 acceptance. Current work prioritizes Windows; further Linux testing is deferred.
 GitHub Actions currently targets Windows Node 22/24 with the isolated Chrome
-fixture enabled in both jobs. A configured job is not a pass; its first remote
-run is pending. macOS and Linux CI are not enabled in this phase.
+fixture enabled in both jobs. The remote verification record below confirms
+their successful execution. macOS and Linux CI are not enabled in this phase.
 
 ## Coverage of behavior
 
@@ -84,13 +84,22 @@ protocol/task regressions and the complete Windows suites, without consuming
 another generation. The earlier recovered-image
 attempt remains historical evidence; it was not counted as this complete smoke.
 
-## Remaining release verification
+## GitHub Actions verification — 2026-10-24
 
-Run and record the first Windows GitHub Actions matrix after repository creation.
-Local Windows results do not imply remote CI, macOS or Linux success. Further
-Linux checks are deferred at the user's request; macOS is also unverified.
-The workflow grants only repository read access, uses pinned official Actions,
-and performs no real-site login, upload or image generation.
+The first successful [Windows verification run](https://github.com/WhatYearIsNow/chatgpt-web-skill/actions/runs/40049595602)
+tested commit [`099c32d`](https://github.com/WhatYearIsNow/chatgpt-web-skill/commit/099c32d9479c91706582f5eec9f8da8390d88766).
+Both `windows-latest` jobs, Node 22 and Node 24, passed **154 tests, 0 failed,
+0 skipped**, including their isolated Chrome fixture. Source validation and the
+npm distribution dry run passed in both jobs. The workflow grants repository
+read access, pins official Actions by commit, and performs no real-site login,
+private-file upload or image generation.
+
+## Platform scope
+
+Windows local and remote CI acceptance is complete for this candidate. Linux
+checks remain deferred at the user's request; macOS is unverified. Neither
+platform has an enabled CI job in this phase. The successful Windows jobs do not
+establish support for those platforms.
 
 The first Windows Node 22 rerun exposed a temporary `EBUSY` while reading the
 new disposable Chrome's DevToolsActivePort file. The test now waits for that
