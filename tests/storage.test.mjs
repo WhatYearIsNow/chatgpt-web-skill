@@ -25,8 +25,10 @@ async function fixture(t) {
     let canonical = await realpath(directory);
     if (process.platform === 'win32') canonical = canonical.toLowerCase();
     try {
-      for (const namespace of [`chatgpt-web:data:v1:${canonical}`,
-        ...['counter', 'death', 'foreign'].map(kind => `test:${kind}:${directory}`)]) {
+      for (const namespace of [
+        `chatgpt-web:data:v1:${canonical}`,
+        ...['counter', 'death', 'foreign'].map((kind) => `test:${kind}:${directory}`),
+      ]) {
         const release = await acquireMutex(namespace, { timeoutMs: 0 });
         await release();
       }
@@ -34,8 +36,16 @@ async function fixture(t) {
     } catch (error) {
       assert.equal(resolve(dirname(directory)), temporaryBase);
       await rm(directory, { recursive: true, force: true });
-      if (process.platform !== 'win32' || error.code !== 'LOCK_UNAVAILABLE' || !error.message.includes('(EACCES)')) throw error;
-      if (attempt === 23) throw new Error('Could not allocate a Windows test directory with usable mutex ports', { cause: error });
+      if (
+        process.platform !== 'win32' ||
+        error.code !== 'LOCK_UNAVAILABLE' ||
+        !error.message.includes('(EACCES)')
+      )
+        throw error;
+      if (attempt === 23)
+        throw new Error('Could not allocate a Windows test directory with usable mutex ports', {
+          cause: error,
+        });
     }
   }
   const previous = process.env.CHATGPT_WEB_DATA_DIR;
@@ -59,8 +69,12 @@ function startChild(source, directory) {
   let stderr = '';
   child.stdout.setEncoding('utf8');
   child.stderr.setEncoding('utf8');
-  child.stdout.on('data', data => { stdout += data; });
-  child.stderr.on('data', data => { stderr += data; });
+  child.stdout.on('data', (data) => {
+    stdout += data;
+  });
+  child.stderr.on('data', (data) => {
+    stderr += data;
+  });
   const done = new Promise((resolveDone, rejectDone) => {
     child.once('error', rejectDone);
     child.once('close', (code, signal) => resolveDone({ code, signal, stdout, stderr }));
@@ -75,13 +89,19 @@ async function runChild(source, directory) {
 }
 
 async function owner(t, namespace, directory, browser = false) {
-  const worker = startChild(`
+  const worker = startChild(
+    `
     import { ${browser ? 'acquireLock' : 'acquireMutex'} } from ${JSON.stringify(browser ? lockUrl : storageUrl)};
     await ${browser ? 'acquireLock' : 'acquireMutex'}(${JSON.stringify(namespace)});
     console.log('ready');
     setInterval(() => {}, 1000);
-  `, directory);
-  t.after(async () => { worker.child.kill('SIGKILL'); await worker.done; });
+  `,
+    directory,
+  );
+  t.after(async () => {
+    worker.child.kill('SIGKILL');
+    await worker.done;
+  });
   for (let i = 0; !worker.output().includes('ready') && i < 200; i++) await delay(10);
   assert.match(worker.output(), /ready/);
   return worker;
@@ -90,11 +110,26 @@ async function owner(t, namespace, directory, browser = false) {
 test('runtime directories honor overrides and platform conventions', () => {
   const home = resolve('example-home');
   assert.equal(getDataDir({ env: { CHATGPT_WEB_DATA_DIR: './custom' }, home }), resolve('./custom'));
-  assert.equal(getDataDir({ env: { LOCALAPPDATA: home }, platform: 'win32', home }), join(home, 'chatgpt-web'));
-  assert.equal(getDataDir({ env: {}, platform: 'win32', home }), join(home, 'AppData', 'Local', 'chatgpt-web'));
-  assert.equal(getDataDir({ env: {}, platform: 'darwin', home }), join(home, 'Library', 'Application Support', 'chatgpt-web'));
-  assert.equal(getDataDir({ env: { XDG_DATA_HOME: home }, platform: 'linux', home }), join(home, 'chatgpt-web'));
-  assert.equal(getDataDir({ env: { XDG_DATA_HOME: 'relative' }, platform: 'linux', home }), join(home, '.local', 'share', 'chatgpt-web'));
+  assert.equal(
+    getDataDir({ env: { LOCALAPPDATA: home }, platform: 'win32', home }),
+    join(home, 'chatgpt-web'),
+  );
+  assert.equal(
+    getDataDir({ env: {}, platform: 'win32', home }),
+    join(home, 'AppData', 'Local', 'chatgpt-web'),
+  );
+  assert.equal(
+    getDataDir({ env: {}, platform: 'darwin', home }),
+    join(home, 'Library', 'Application Support', 'chatgpt-web'),
+  );
+  assert.equal(
+    getDataDir({ env: { XDG_DATA_HOME: home }, platform: 'linux', home }),
+    join(home, 'chatgpt-web'),
+  );
+  assert.equal(
+    getDataDir({ env: { XDG_DATA_HOME: 'relative' }, platform: 'linux', home }),
+    join(home, '.local', 'share', 'chatgpt-web'),
+  );
 });
 test('data mutex ports stay outside the default Windows dynamic-port range', () => {
   for (let i = 0; i < 1000; i++) {
@@ -103,12 +138,15 @@ test('data mutex ports stay outside the default Windows dynamic-port range', () 
   }
 });
 
-test('mutex excludes real processes across repeated critical sections', { timeout: 20000 }, async t => {
+test('mutex excludes real processes across repeated critical sections', { timeout: 20000 }, async (t) => {
   const directory = await fixture(t);
   const namespace = `test:counter:${directory}`;
   const counter = join(directory, 'counter');
   await writeFile(counter, '0');
-  const results = await Promise.all(Array.from({ length: 8 }, () => runChild(`
+  const results = await Promise.all(
+    Array.from({ length: 8 }, () =>
+      runChild(
+        `
     import { acquireMutex } from ${JSON.stringify(storageUrl)};
     import { readFile, writeFile } from 'node:fs/promises';
     import { setTimeout as delay } from 'node:timers/promises';
@@ -120,12 +158,16 @@ test('mutex excludes real processes across repeated critical sections', { timeou
       await release();
     }
     console.log('ok');
-  `, directory)));
+  `,
+        directory,
+      ),
+    ),
+  );
   assert.equal(results.length, 8);
   assert.equal(await readFile(counter, 'utf8'), '40');
 });
 
-test('dead owner recovers without files, including concurrent contenders', { timeout: 15000 }, async t => {
+test('dead owner recovers without files, including concurrent contenders', { timeout: 15000 }, async (t) => {
   const directory = await fixture(t);
   const namespace = `test:death:${directory}`;
   const worker = await owner(t, namespace, directory);
@@ -133,7 +175,10 @@ test('dead owner recovers without files, including concurrent contenders', { tim
   worker.child.kill('SIGKILL');
   await worker.done;
   const marker = join(directory, 'inside');
-  await Promise.all(Array.from({ length: 6 }, () => runChild(`
+  await Promise.all(
+    Array.from({ length: 6 }, () =>
+      runChild(
+        `
     import { acquireMutex } from ${JSON.stringify(storageUrl)};
     import { open, rm } from 'node:fs/promises';
     import { setTimeout as delay } from 'node:timers/promises';
@@ -143,14 +188,22 @@ test('dead owner recovers without files, including concurrent contenders', { tim
     await file.close();
     await rm(${JSON.stringify(marker)});
     await release();
-  `, directory)));
+  `,
+        directory,
+      ),
+    ),
+  );
   assert.deepEqual(await readdir(directory), []);
 });
 
-test('live ownership cannot be stolen by clock jumps or another process release', { timeout: 10000 }, async t => {
-  const directory = await fixture(t);
-  await owner(t, 'test browser', directory, true);
-  const result = await runChild(`
+test(
+  'live ownership cannot be stolen by clock jumps or another process release',
+  { timeout: 10000 },
+  async (t) => {
+    const directory = await fixture(t);
+    await owner(t, 'test browser', directory, true);
+    const result = await runChild(
+      `
     import { acquireLock, releaseLock } from ${JSON.stringify(lockUrl)};
     Date.now = () => 9000000000000;
     await releaseLock();
@@ -159,11 +212,14 @@ test('live ownership cannot be stolen by clock jumps or another process release'
       throw new Error('double ownership');
     } catch (error) { if (error.code !== 'LOCK_TIMEOUT') throw error; }
     console.log('blocked');
-  `, directory);
-  assert.equal(result, 'blocked');
-});
+  `,
+      directory,
+    );
+    assert.equal(result, 'blocked');
+  },
+);
 
-test('release is idempotent and old closures cannot release a later owner', async t => {
+test('release is idempotent and old closures cannot release a later owner', async (t) => {
   await fixture(t);
   const first = await acquireLock('first', { timeoutMs: 500 });
   await assert.rejects(acquireLock('nested'), { code: 'LOCK_REENTRANT' });
@@ -178,37 +234,55 @@ test('release is idempotent and old closures cannot release a later owner', asyn
   await third();
 });
 
-test('foreign listener/hash collision fails closed and does not close its owner', async t => {
+test('foreign listener/hash collision fails closed and does not close its owner', async (t) => {
   const directory = await fixture(t);
   const namespace = `test:foreign:${directory}`;
-  const server = createServer(socket => socket.destroy());
+  const server = createServer((socket) => socket.destroy());
   server.listen({ host: '127.0.0.1', port: mutexPort(namespace), exclusive: true });
   await once(server, 'listening');
-  t.after(() => new Promise(resolveClose => server.close(resolveClose)));
+  t.after(() => new Promise((resolveClose) => server.close(resolveClose)));
   await assert.rejects(acquireMutex(namespace, { timeoutMs: 30, pollMs: 2 }), { code: 'LOCK_TIMEOUT' });
   assert.equal(server.listening, true);
 });
 
-test('quota read-modify-write preserves concurrent updates and ledger records', { timeout: 25000 }, async t => {
-  const directory = await fixture(t);
-  await Promise.all(Array.from({ length: 12 }, (_, index) => runChild(`
+test(
+  'quota read-modify-write preserves concurrent updates and ledger records',
+  { timeout: 25000 },
+  async (t) => {
+    const directory = await fixture(t);
+    await Promise.all(
+      Array.from({ length: 12 }, (_, index) =>
+        runChild(
+          `
     import { markExhausted, record } from ${JSON.stringify(quotaUrl)};
     await markExhausted('fixture-account-${index}', 'limit');
     await record({ kind: 'image', account: 'fixture-account-${index}', outcome: 'ok' });
-  `, directory)));
-  const state = JSON.parse(await readFile(join(directory, 'quota-state.json'), 'utf8'));
-  assert.equal(Object.keys(state.accounts).length, 12);
-  assert.equal((await quota.readAll()).length, 12);
-  assert.equal((await readdir(directory)).filter(name => name.endsWith('.tmp')).length, 0);
-  await Promise.all(Array.from({ length: 12 }, (_, index) => quota.markOk(`parallel-${index}`)));
-  const final = JSON.parse(await readFile(join(directory, 'quota-state.json'), 'utf8'));
-  assert.equal(Object.keys(final.accounts).length, 24);
-});
+  `,
+          directory,
+        ),
+      ),
+    );
+    const state = JSON.parse(await readFile(join(directory, 'quota-state.json'), 'utf8'));
+    assert.equal(Object.keys(state.accounts).length, 12);
+    assert.equal((await quota.readAll()).length, 12);
+    assert.equal((await readdir(directory)).filter((name) => name.endsWith('.tmp')).length, 0);
+    await Promise.all(Array.from({ length: 12 }, (_, index) => quota.markOk(`parallel-${index}`)));
+    const final = JSON.parse(await readFile(join(directory, 'quota-state.json'), 'utf8'));
+    assert.equal(Object.keys(final.accounts).length, 24);
+  },
+);
 
-test('corrupt JSON and invalid schemas fail closed and are preserved', async t => {
+test('corrupt JSON and invalid schemas fail closed and are preserved', async (t) => {
   const directory = await fixture(t);
   const file = join(directory, 'quota-state.json');
-  for (const raw of ['{', '{}', 'null', '{"accounts":[]}', '{"accounts":{"fixture":{"resets_at":"not-a-date"}}}', '{"accounts":{"fixture":{"aliases":[12]}}}']) {
+  for (const raw of [
+    '{',
+    '{}',
+    'null',
+    '{"accounts":[]}',
+    '{"accounts":{"fixture":{"resets_at":"not-a-date"}}}',
+    '{"accounts":{"fixture":{"aliases":[12]}}}',
+  ]) {
     await writeFile(file, raw);
     await assert.rejects(quota.checkUsable('fixture'), { code: 'STORAGE_INVALID' });
     await assert.rejects(quota.markOk('fixture'), { code: 'STORAGE_INVALID' });
@@ -216,7 +290,7 @@ test('corrupt JSON and invalid schemas fail closed and are preserved', async t =
   }
 });
 
-test('I/O failures are errors, not an empty quota or ledger', async t => {
+test('I/O failures are errors, not an empty quota or ledger', async (t) => {
   const directory = await fixture(t);
   await mkdir(join(directory, 'quota-state.json'));
   await assert.rejects(quota.checkUsable('fixture'), { code: 'STORAGE_IO' });
@@ -225,7 +299,7 @@ test('I/O failures are errors, not an empty quota or ledger', async t => {
   await assert.rejects(quota.record({ kind: 'ask', outcome: 'ok' }), { code: 'STORAGE_IO' });
 });
 
-test('corrupt ledger blocks reading and appending without discarding evidence', async t => {
+test('corrupt ledger blocks reading and appending without discarding evidence', async (t) => {
   const directory = await fixture(t);
   const file = join(directory, 'usage.jsonl');
   const raw = '{"kind":"image","outcome":"ok","ts":"2026-01-01T00:00:00Z"}\n{"half":';
@@ -235,7 +309,7 @@ test('corrupt ledger blocks reading and appending without discarding evidence', 
   assert.equal(await readFile(file, 'utf8'), raw);
 });
 
-test('failed atomic replacement preserves the destination and cleans its own temp file', async t => {
+test('failed atomic replacement preserves the destination and cleans its own temp file', async (t) => {
   const directory = await fixture(t);
   const destination = join(directory, 'existing-directory');
   await mkdir(destination);
@@ -245,12 +319,18 @@ test('failed atomic replacement preserves the destination and cleans its own tem
   assert.deepEqual(await readdir(directory), ['existing-directory']);
 });
 
-test('ambiguous fragment and duplicate exact alias fail closed', async t => {
+test('ambiguous fragment and duplicate exact alias fail closed', async (t) => {
   const directory = await fixture(t);
-  const state = { accounts: {
-    'fixture-alpha': { aliases: ['shared'], exhausted_at: null },
-    'fixture-beta': { aliases: ['shared'], exhausted_at: '2026-01-01T00:00:00Z', resets_at: '2099-01-01T00:00:00Z' },
-  } };
+  const state = {
+    accounts: {
+      'fixture-alpha': { aliases: ['shared'], exhausted_at: null },
+      'fixture-beta': {
+        aliases: ['shared'],
+        exhausted_at: '2026-01-01T00:00:00Z',
+        resets_at: '2099-01-01T00:00:00Z',
+      },
+    },
+  };
   await writeFile(join(directory, 'quota-state.json'), JSON.stringify(state));
   await assert.rejects(quota.checkUsableByAlias('fixture'), { code: 'QUOTA_ALIAS_AMBIGUOUS' });
   await assert.rejects(quota.checkUsable('shared'), { code: 'QUOTA_ALIAS_AMBIGUOUS' });
@@ -258,7 +338,7 @@ test('ambiguous fragment and duplicate exact alias fail closed', async t => {
   assert.equal((await quota.checkUsable('fixture-beta')).ok, false);
 });
 
-test('quota expiry, aliases, episode preservation, and prototype-like display names', async t => {
+test('quota expiry, aliases, episode preservation, and prototype-like display names', async (t) => {
   const directory = await fixture(t);
   const now = Date.parse('2026-10-23T00:00:00Z');
   const first = await quota.markExhausted('fixture', 'tomorrow at 12:36 PM', now);
@@ -274,7 +354,7 @@ test('quota expiry, aliases, episode preservation, and prototype-like display na
   assert.equal((await quota.checkUsable('__proto__', now)).ok, false);
 });
 
-test('local calendar boundaries and dry-run outcomes do not inflate image counts', async t => {
+test('local calendar boundaries and dry-run outcomes do not inflate image counts', async (t) => {
   const directory = await fixture(t);
   const events = [
     { ts: '2026-10-22T15:59:59Z', kind: 'image', outcome: 'ok', account: 'fixture' },
@@ -284,7 +364,10 @@ test('local calendar boundaries and dry-run outcomes do not inflate image counts
     { ts: '2026-10-23T12:00:00Z', kind: 'image', outcome: 'fail', account: 'fixture' },
     { ts: '2026-10-23T12:00:00Z', kind: 'image', outcome: 'ok', account: 'second' },
   ];
-  await writeFile(join(directory, 'usage.jsonl'), events.map(event => JSON.stringify(event)).join('\n') + '\n');
+  await writeFile(
+    join(directory, 'usage.jsonl'),
+    events.map((event) => JSON.stringify(event)).join('\n') + '\n',
+  );
   const options = { now: Date.parse('2026-10-23T06:00:00Z'), timeZone: 'Asia/Shanghai' };
   assert.equal(await quota.todayImages('fixture', options), 1);
   assert.equal(await quota.todayImages(null, options), 2);
@@ -304,8 +387,7 @@ test('reset phrases validate AM/PM hours and minutes and preserve local midnight
   }
 });
 
-
-test('missing ledger delimiter is not silently merged with the next record', async t => {
+test('missing ledger delimiter is not silently merged with the next record', async (t) => {
   const directory = await fixture(t);
   const path = join(directory, 'usage.jsonl');
   const raw = JSON.stringify({ kind: 'image', outcome: 'ok', ts: '2026-01-01T00:00:00Z' });
@@ -314,7 +396,7 @@ test('missing ledger delimiter is not silently merged with the next record', asy
   assert.equal(await readFile(path, 'utf8'), raw);
 });
 
-test('stored metadata cannot redirect a matched account update', async t => {
+test('stored metadata cannot redirect a matched account update', async (t) => {
   const directory = await fixture(t);
   const path = join(directory, 'quota-state.json');
   await writeFile(path, JSON.stringify({ accounts: { fixture: { key: 'other', aliases: ['alias'] } } }));
@@ -324,15 +406,17 @@ test('stored metadata cannot redirect a matched account update', async t => {
   assert.ok(state.accounts.fixture.last_ok_at);
 });
 
-
-test('nested data operations reject explicitly while independent calls queue', async t => {
+test('nested data operations reject explicitly while independent calls queue', async (t) => {
   await fixture(t);
-  await assert.rejects(withDataLock(() => quota.markOk('nested')), { code: 'LOCK_REENTRANT' });
+  await assert.rejects(
+    withDataLock(() => quota.markOk('nested')),
+    { code: 'LOCK_REENTRANT' },
+  );
   await Promise.all([quota.markOk('first'), quota.markOk('second')]);
   assert.equal((await quota.checkUsable('first')).ok, true);
 });
 
-test('legacy exhaustion without an explicit reset keeps its fallback episode', async t => {
+test('legacy exhaustion without an explicit reset keeps its fallback episode', async (t) => {
   const directory = await fixture(t);
   const now = Date.parse('2026-10-23T00:00:00Z');
   const initial = { accounts: { fixture: { exhausted_at: new Date(now).toISOString() } } };

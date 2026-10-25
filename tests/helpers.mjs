@@ -1,19 +1,27 @@
 import vm from 'node:vm';
 import { SEL } from '../lib/selectors.mjs';
 
-export function fixture({ users = [], assistants = [], complete = true, stop = false,
-  body = '', draft = '', attachment = false } = {}) {
+export function fixture({
+  users = [],
+  assistants = [],
+  complete = true,
+  stop = false,
+  body = '',
+  draft = '',
+  attachment = false,
+} = {}) {
   const element = (spec) => ({
-    innerText: spec.text || '', textContent: spec.raw ?? spec.text ?? '',
-    getAttribute: (key) => key === 'data-chatgpt-search-unit-key' ? spec.key : null,
-    compareDocumentPosition: (other) => spec.order < other.order ? 4 : 2,
-    querySelector: () => spec.markdown ? { innerText: spec.markdown } : null,
+    innerText: spec.text || '',
+    textContent: spec.raw ?? spec.text ?? '',
+    getAttribute: (key) => (key === 'data-chatgpt-search-unit-key' ? spec.key : null),
+    compareDocumentPosition: (other) => (spec.order < other.order ? 4 : 2),
+    querySelector: () => (spec.markdown ? { innerText: spec.markdown } : null),
     order: spec.order,
   });
   const userNodes = users.map(element);
   const assistantNodes = assistants.map(element);
   const buttons = stop ? [{ getAttribute: () => 'Stop generating' }] : [];
-  const turns = [{ getAttribute: () => complete ? 'complete' : 'streaming' }];
+  const turns = [{ getAttribute: () => (complete ? 'complete' : 'streaming') }];
   const document = {
     body: { innerText: body },
     querySelectorAll(selector) {
@@ -31,8 +39,8 @@ export function fixture({ users = [], assistants = [], complete = true, stop = f
     },
   };
   return {
-    evaluate: async expression => vm.runInNewContext(expression, { document }),
-    waitForFunction: async expression => {
+    evaluate: async (expression) => vm.runInNewContext(expression, { document }),
+    waitForFunction: async (expression) => {
       if (!vm.runInNewContext(expression, { document })) throw new Error('等待条件未满足');
     },
   };
