@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.3.0 — 2026-10-25
+
+- Launch an isolated managed browser when no CDP endpoint or adapter is configured: a locally discovered Chromium-family executable (Chrome/Chromium/Edge/Brave; `CHATGPT_WEB_CHROME` or config `chromePath` overrides) with a dedicated fresh profile under the private data directory and an ephemeral loopback debug port. An explicit endpoint or adapter always takes priority, and a configured-but-unreachable endpoint is an error, never a fallback launch trigger.
+- The managed browser's first interactive ChatGPT login persists in its profile; every later run reconnects and reuses it without prompting again. Tasks fail fast with `LOGIN_REQUIRED` on the login page instead of waiting out the composer timeout.
+- Add the `browser status|start|login|stop` command for the managed lifecycle (read-only status, opt-in headless start, guided first login, graceful shutdown), serialized on the shared browser mutex; add `browser.mjs` entry script.
+- Extend private config.json with `chromePath`, `headless` and `managed` (set `false`, or `CHATGPT_WEB_MANAGED=0`, to restore the 0.2.x fail-when-unconfigured behavior); never touch the user's default browser or profiles.
+
 ## Unreleased
 
 - Explain CDP endpoint forms in connection failures: `ERR_CDP_DISCOVERY` now states that only http(s) endpoints probe `/json/version`, that ws(s) endpoints connect directly, and that Chrome's `chrome://inspect/#remote-debugging` switch mode intentionally serves 404 there because it exposes only the browser WebSocket endpoint (use the ws:// form, such as a local relay).

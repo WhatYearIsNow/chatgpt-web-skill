@@ -34,3 +34,11 @@ Alternatively set `browserModule` to an absolute path to your trusted adapter.
 Environment variables or explicit connection arguments take precedence over the
 entire persisted connection configuration. Malformed configuration fails closed.
 The repository/current directory is never searched for this private file.
+
+Since 0.3.0 the file also accepts managed-browser keys: `chromePath` (executable
+hint for the isolated managed browser), `headless` (boolean) and `managed`
+(boolean, set `false` to restore the 0.2.x behavior of failing when no endpoint
+is configured). With none of `endpoint`/`browserModule` present and `managed`
+not disabled, the CLI launches a dedicated managed browser under
+`<data dir>/browser` whose first interactive login persists and is reused;
+configure an explicit `endpoint` to keep using an existing browser instead.

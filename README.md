@@ -6,14 +6,14 @@
 
 可作为 agent skill 或独立 CLI 使用的 ChatGPT 网页自动化工具。支持纯文本、ZIP 附件审查、已有会话续问、参考图生图、本地用量记录，以及显式邮箱验证的 SSO 切号。
 
-**v0.2.0 正式版，MIT，零第三方运行依赖。** 需要 Node.js 22.15+ 和已有的本地 Chromium CDP 端点。它操作网页 UI，不是官方 API 客户端；UI、语言和账号功能变化可能需要更新选择器。
+**v0.3.0 正式版，MIT，零第三方运行依赖。** 需要 Node.js 22.15+。未配置端点时自动启动隔离的托管浏览器（登录一次即持久复用）；也可显式指定已有 CDP 端点。它操作网页 UI，不是官方 API 客户端；UI、语言和账号功能变化可能需要更新选择器。
 
-**当前验收状态（2026-10-24）：** Windows 本地与 GitHub Actions 的 Node 22/24 均各 154 项测试通过，0 失败、0 跳过。邮箱 SSO、Google 已有登录、账号恢复及完整单图生成保存已通过真实验收。完整范围见 [测试记录](docs/testing.md)。
+**当前验收状态（2026-10-25）：** Windows 本地与 GitHub Actions 的 Node 22/24 全部测试通过（含隔离真实 Chrome 集成）。邮箱 SSO、Google 已有登录、账号恢复、完整单图生成保存与托管浏览器生命周期已通过真实验收。完整范围见 [测试记录](docs/testing.md)。
 
-## 安装与浏览器准备
+## 安装
 
 克隆或下载源码并在项目目录运行，不需要 `npm install`。
-也可从 [v0.2.0 Release](https://github.com/WhatYearIsNow/chatgpt-web-skill/releases/tag/v0.2.0) 下载 `chatgpt-web-0.2.0-source.zip`，按附带的 `SHA256SUMS` 核对文件；解压得到 `chatgpt-web/` 目录。
+也可从 [Releases](https://github.com/WhatYearIsNow/chatgpt-web-skill/releases) 下载 source.zip，按附带的 `SHA256SUMS` 核对文件；解压得到 `chatgpt-web/` 目录。
 
 ```sh
 git clone https://github.com/WhatYearIsNow/chatgpt-web-skill.git
@@ -22,7 +22,28 @@ cd chatgpt-web-skill
 
 作为 skill 使用时，将整个目录放入 agent 的技能目录并命名为 `chatgpt-web`；入口是 [SKILL.md](SKILL.md)。
 
-准备一个**新的独立浏览器数据目录**，手动登录自己的 ChatGPT 账号。例如 PowerShell：
+## 浏览器：零配置从无到有（推荐）
+
+**不需要手动准备浏览器。** 未配置任何 CDP 端点时，第一条命令会自动完成：
+
+1. 找一个本机 Chromium 系浏览器（Chrome → Chromium → Edge → Brave，Linux 另查 PATH；可用 `CHATGPT_WEB_CHROME` 或 config.json `chromePath` 指定）。
+2. 在**私有数据目录**下创建一个全新的隔离 profile（Windows 为 `%LOCALAPPDATA%\chatgpt-web\browser`，可用 `CHATGPT_WEB_DATA_DIR` 改位置），以动态调试端口启动它。你的日常浏览器、日常 profile 完全不被触碰——绝不读取、复制或修改。
+3. 打开 chatgpt.com。**首次运行会报 `LOGIN_REQUIRED`**：在这个窗口里手动登录一次你的 ChatGPT 账号即可。
+
+**这个浏览器就是之后所有命令复用的浏览器**：登录态持久保存在上面的托管 profile 里，之后每次运行自动连回同一个窗口，不会再次登录。可用 `browser` 子命令管理它：
+
+```sh
+node scripts/chatgpt-web.mjs browser status   # 免锁只读体检：可执行文件/是否在跑/端点
+node scripts/chatgpt-web.mjs browser start    # 启动或复用托管浏览器（--headless 可选；无显示器环境用）
+node scripts/chatgpt-web.mjs browser login    # 打开 chatgpt.com 并等你完成一次登录（--timeout 秒，默认 300）
+node scripts/chatgpt-web.mjs browser stop     # 优雅关闭（冲刷 cookie）；下次命令会重新拉起
+```
+
+首跑推荐顺序：`browser start`（或直接跑任意命令）→ 在弹出的窗口登录一次（或用 `browser login` 等待）→ 之后全自动。机器上没有任何 Chromium 系浏览器时安装一个，或用 `CHATGPT_WEB_CHROME` 指向现有可执行文件。
+
+## 高级：使用已有浏览器端点
+
+不想用托管浏览器、要复用其他已登录的浏览器时，显式配置端点——**显式端点永远优先，配置了端点就绝不会启动托管浏览器**：
 
 ```powershell
 $chrome = 'C:\Program Files\Google\Chrome\Application\chrome.exe'
@@ -35,13 +56,14 @@ node scripts/chatgpt-web.mjs ask --prompt '只回复：收到'
 Linux 可用 `google-chrome --remote-debugging-port=9222 --user-data-dir="$HOME/.local/share/chatgpt-web-browser"`；macOS 使用 Chrome 应用的可执行路径与新的 profile 目录。
 Chrome 136 起，默认浏览器数据目录不再支持旧式调试端口参数，需要非默认目录；参见 [Chrome 官方说明](https://developer.chrome.com/blog/remote-debugging-port)。不要复制现有 profile。
 
-工具只连接 loopback HTTP/WS 端点，不自动启动浏览器或批准系统弹窗。已有可信中继可直接配置 WebSocket 地址，例如 `CHATGPT_WEB_CDP_URL=ws://127.0.0.1:9333`；纯 WebSocket 中继与 Chrome 调试开关模式（`chrome://inspect/#remote-debugging`）没有 `/json/version` 页面，必须用 `ws://` 形态直连。
+工具只连接 loopback HTTP/WS 端点。已有可信中继可直接配置 WebSocket 地址，例如 `CHATGPT_WEB_CDP_URL=ws://127.0.0.1:9333`；纯 WebSocket 中继与 Chrome 调试开关模式（`chrome://inspect/#remote-debugging`）没有 `/json/version` 页面，必须用 `ws://` 形态直连。
 若已有自己的浏览器连接库，可显式指定 `CHATGPT_WEB_BROWSER_MODULE`，详见 [架构和适配器接口](docs/architecture.md)。
-`.env.example` 只是变量示例；CLI 不自动加载 `.env`。也可在私有运行数据目录的 `config.json` 持久保存 `endpoint` 或 `browserModule`；显式连接参数或环境变量优先，见 [迁移说明](docs/migration.md)。
+`.env.example` 只是变量示例；CLI 不自动加载 `.env`。也可在私有运行数据目录的 `config.json` 持久保存 `endpoint`、`browserModule`、`chromePath`、`headless` 或 `managed`（设为 `false` 关闭托管启动，恢复"未配置即报错"）；显式连接参数或环境变量优先，见 [迁移说明](docs/migration.md)。
 
 ## 命令
 
 ```sh
+node scripts/chatgpt-web.mjs browser status
 node scripts/chatgpt-web.mjs ask --prompt-file question.txt --out answer.md
 node scripts/chatgpt-web.mjs review --zip source.zip --prompt-file review.txt --out report.md
 node scripts/chatgpt-web.mjs followup --url https://chatgpt.com/c/CONVERSATION-ID --prompt "补充说明第三点" --out reply.md
@@ -53,7 +75,7 @@ node scripts/chatgpt-web.mjs account --email user@example.com --provider google 
 node scripts/chatgpt-web.mjs account --google --keep-open
 ```
 
-每条命令有 `--help`。`scripts/ask.mjs`、`review.mjs`、`followup.mjs`、`image.mjs`、`quota.mjs`、`account.mjs` 是同一实现的兼容入口。
+每条命令有 `--help`。`scripts/ask.mjs`、`review.mjs`、`followup.mjs`、`image.mjs`、`quota.mjs`、`account.mjs`、`browser.mjs` 是同一实现的兼容入口。
 
 | 参数 | 含义 |
 | --- | --- |

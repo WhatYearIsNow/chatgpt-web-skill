@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { runTask } from '../lib/tasks.mjs';
 import { QuotaError } from '../lib/chatgpt.mjs';
+import { TaskError } from '../lib/errors.mjs';
 import { setTimeout as delay } from 'node:timers/promises';
 
 const cursor = { userKey: 'test:user' };
@@ -16,7 +17,7 @@ function setup(overrides = {}) {
   const d = {
     acquireLock: async () => { events.push('lock'); return async () => events.push('release'); },
     connectWithApproval: async () => cdp(),
-    Page: class {}, activatePage: async () => {}, waitComposerReady: async () => {},
+    Page: class {}, activatePage: async () => {}, ensureLoggedIn: async () => true, waitComposerReady: async () => {},
     assertIdleComposer: async () => {}, readAccount: async () => 'Example', checkAccount() {},
     attachFiles: async () => { attached = true; events.push('attach'); },
     fillPrompt: async () => { events.push('fill'); }, setThinking: async () => {},
@@ -55,6 +56,18 @@ test('direct service callers cannot bypass essential validation or silently run 
     await assert.rejects(runTask(input, h.d), { code: 'USAGE' });
     assert.equal(h.events.length, 0);
   }
+});
+
+test('a login page fails fast with LOGIN_REQUIRED before any composer wait', async () => {
+  const h = setup({ ensureLoggedIn: async () => { throw new TaskError('LOGIN_REQUIRED', 'not logged in'); } });
+  await assert.rejects(runTask(h.options, h.d), (error) => {
+    assert.equal(error.code, 'LOGIN_REQUIRED');
+    assert.equal(error.taskState.stage, 'prepare');
+    return true;
+  });
+  assert.ok(!h.events.includes('send') && !h.events.includes('fill'));
+  assert.ok(h.events.includes('close-tab') && h.events.includes('release'));
+  assert.equal(h.records.at(-1).outcome, 'fail');
 });
 
 test('dry-run can upload an attachment but never sends or writes an output', async () => {

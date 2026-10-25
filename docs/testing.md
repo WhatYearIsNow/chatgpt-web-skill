@@ -4,7 +4,28 @@ The automated suite uses direct ESM imports, real CLI subprocesses, temporary
 local data, local WebSocket servers and an optional disposable Chromium profile.
 It never uploads private files, switches a real account, or consumes image quota.
 
-## Current Windows record — 2026-10-24
+## Current Windows record — 2026-10-25
+
+| Runtime | Environment | Passed | Failed | Skipped |
+| --- | --- | --- | --- | --- |
+| Node.js v24.15.0 | Windows, disposable Chrome enabled | 169 | 0 | 0 |
+
+The 0.3.0 tree adds managed-browser unit tests (executable discovery, port-file
+parsing, reuse/launch/shutdown), connect-priority tests (explicit endpoint wins,
+unconfigured launches, opt-out fails closed), browser-command dispatch tests,
+a fail-fast `LOGIN_REQUIRED` task test and a real-Chrome integration test that
+launches, reuses, reconnects and gracefully stops a disposable managed browser.
+The full suite must not run concurrently with a real task: both share the
+machine-local browser mutex, and the lock tests use the real namespace, so a
+concurrent production task manifests as `LOCK_TIMEOUT` in those tests. Live
+authorized smoke on 2026-10-25: a zero-config first run with a temporary data
+directory launched the managed browser, detected the logged-out landing page and
+returned structured `LOGIN_REQUIRED` (exit 1, stage `prepare`); `browser status`
+reported discovery and endpoint state read-only; `browser stop` shut the instance
+down gracefully (`stopped: true`). A stale DevToolsActivePort file after a killed
+process was discarded by connect verification and the browser relaunched.
+
+## Previous Windows record — 2026-10-24
 
 | Runtime | Environment | Passed | Failed | Skipped |
 | --- | --- | --- | --- | --- |

@@ -11,6 +11,7 @@ import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { Page, connectToUserChrome, sleep } from '../lib/browser.mjs';
+import { ensureManagedBrowser, closeManagedBrowser, browserStatus } from '../lib/launch.mjs';
 import { fillPrompt, sendAndConfirm, waitTurnComplete, collectReply, attachFiles } from '../lib/chatgpt.mjs';
 
 const binary = process.env.CHATGPT_WEB_TEST_CHROME;
@@ -204,4 +205,53 @@ test('real Chromium CDP lifecycle with an isolated local fixture', {
     assert.equal(await mechanicalPage.evaluate('document.querySelector("#composer").value'), prompt);
   });
   await mechanicalPage.close();
+});
+
+test('managed browser lifecycle: launch, reuse, connect, stop', {
+  skip: binary ? false : 'Set CHATGPT_WEB_TEST_CHROME to run the offline browser integration test',
+  timeout: 60_000,
+}, async (t) => {
+  const dataDir = await mkdtemp(join(tmpdir(), 'chatgpt-web-managed-test-'));
+  assert.equal(dirname(dataDir), resolve(tmpdir()));
+  t.after(async () => {
+    // Only this test's own disposable launch is stopped; then the verified
+    // mkdtemp directory is removed.
+    await closeManagedBrowser({ dataDir, waitMs: 5000 });
+    await rm(dataDir, { recursive: true, force: true, maxRetries: 10, retryDelay: 200 });
+  });
+
+  const statusBefore = await browserStatus({ dataDir });
+  assert.equal(statusBefore.running, false);
+  assert.equal(statusBefore.executable, binary, 'CHATGPT_WEB_TEST_CHROME must be discoverable as the executable');
+  assert.equal(statusBefore.endpoint, null);
+
+  const launched = await ensureManagedBrowser({ dataDir, executable: binary, headless: true, timeoutMs: 30_000 });
+  assert.equal(launched.reused, false);
+  assert.match(launched.endpoint, /^ws:\/\/127\.0\.0\.1:\d+\/devtools\/browser\//);
+  launched.client.close();
+
+  // A second call must reuse the running instance, not launch a second browser.
+  const reused = await ensureManagedBrowser({ dataDir, executable: binary, headless: true, timeoutMs: 30_000 });
+  assert.equal(reused.reused, true);
+  assert.equal(reused.endpoint, launched.endpoint);
+  const targetId = await reused.client.createTarget('about:blank');
+  assert.equal(await reused.client.evaluate(targetId, '2 + 3'), 5);
+  reused.client.close();
+
+  const statusRunning = await browserStatus({ dataDir });
+  assert.equal(statusRunning.running, true);
+  assert.equal(statusRunning.endpoint, launched.endpoint);
+
+  // connectToUserChrome's unconfigured path reaches the same managed browser.
+  const client = await connectToUserChrome({
+    timeoutMs: 30_000,
+    managedLauncher: (options) => ensureManagedBrowser({ ...options, dataDir, executable: binary }),
+  });
+  assert.ok((await client.targets()).length >= 1);
+  client.close();
+
+  const stopped = await closeManagedBrowser({ dataDir, waitMs: 10_000 });
+  assert.equal(stopped.stopped, true, 'the managed browser must exit and remove its DevToolsActivePort file');
+  const statusAfter = await browserStatus({ dataDir });
+  assert.equal(statusAfter.running, false);
 });

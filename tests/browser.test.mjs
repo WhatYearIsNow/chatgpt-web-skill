@@ -103,12 +103,65 @@ test('endpoint validation accepts local HTTP/WS and rejects remote, credentials 
   assert.throws(() => validateEndpoint('http://localhost:9222', { websocketOnly: true }));
 });
 
-test('missing configuration and invalid durations fail before network access', async () => {
+test('disabled managed launch and invalid durations fail before network or process access', async (t) => {
+  const previousManaged = process.env.CHATGPT_WEB_MANAGED;
+  process.env.CHATGPT_WEB_MANAGED = '0';
+  t.after(() => {
+    if (previousManaged === undefined) delete process.env.CHATGPT_WEB_MANAGED;
+    else process.env.CHATGPT_WEB_MANAGED = previousManaged;
+  });
   await assert.rejects(connectToUserChrome({ endpoint: '', browserModule: '' }), { code: 'ERR_CDP_CONFIGURATION' });
   for (const timeoutMs of [0, -1, NaN, Infinity, 1.2, 2 ** 31]) {
     await assert.rejects(connectToUserChrome({ endpoint: 'ws://127.0.0.1:9333', timeoutMs }), TypeError);
   }
   assert.throws(() => sleep(-1), TypeError);
+});
+
+test('managed launch fills the unconfigured gap; explicit endpoints and opt-outs never launch', async (t) => {
+  const previousManaged = process.env.CHATGPT_WEB_MANAGED;
+  const previousChrome = process.env.CHATGPT_WEB_CHROME;
+  t.after(() => {
+    for (const [key, value] of [['CHATGPT_WEB_MANAGED', previousManaged], ['CHATGPT_WEB_CHROME', previousChrome]]) {
+      if (value === undefined) delete process.env[key];
+      else process.env[key] = value;
+    }
+  });
+  let launches = 0;
+  const counting = async () => { launches++; throw new Error('managed launch must not happen'); };
+
+  // An explicit endpoint wins and never launches.
+  const server = await fixture(t);
+  const explicit = await connectToUserChrome({ endpoint: server.ws, timeoutMs: 2000, managedLauncher: counting });
+  explicit.close();
+  assert.equal(launches, 0);
+
+  // Unconfigured defaults to the managed launcher, with env chromePath and no headless default.
+  delete process.env.CHATGPT_WEB_MANAGED;
+  const sentinel = { close() {} };
+  let received = null;
+  const client = await connectToUserChrome({
+    endpoint: '', browserModule: '', timeoutMs: 500,
+    managedLauncher: async (options) => { received = options; return { client: sentinel }; },
+  });
+  assert.equal(client, sentinel);
+  assert.equal(launches, 0);
+  assert.equal(received.executable, null);
+  assert.equal(received.headless, false);
+
+  // CHATGPT_WEB_CHROME flows through as the executable hint.
+  const hint = 'C:\\somewhere\\chrome.exe';
+  process.env.CHATGPT_WEB_CHROME = hint;
+  await connectToUserChrome({
+    endpoint: '', browserModule: '', timeoutMs: 500,
+    managedLauncher: async (options) => { received = options; return { client: sentinel }; },
+  });
+  assert.equal(received.executable, hint);
+  delete process.env.CHATGPT_WEB_CHROME;
+
+  // CHATGPT_WEB_MANAGED=0 restores the explicit-configuration error.
+  process.env.CHATGPT_WEB_MANAGED = '0';
+  await assert.rejects(connectToUserChrome({ endpoint: '', browserModule: '', timeoutMs: 500, managedLauncher: counting }),
+    (error) => error.code === 'ERR_CDP_CONFIGURATION' && error.message.includes('managed'));
 });
 
 test('HTTP discovery and actual WebSocket execute CDP methods and reuse one flattened session', async (t) => {

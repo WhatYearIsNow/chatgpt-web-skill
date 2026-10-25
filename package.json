@@ -1,8 +1,8 @@
 {
   "name": "chatgpt-web-skill",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "private": true,
-  "description": "Portable ChatGPT browser delegation skill and CLI with explicit CDP configuration",
+  "description": "Portable ChatGPT browser delegation skill and CLI with zero-config managed browser or explicit CDP configuration",
   "type": "module",
   "license": "MIT",
   "engines": {

@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
-import { parseArgs, validateOptions, main } from '../lib/cli.mjs';
+import { parseArgs, validateOptions, main, VERSION } from '../lib/cli.mjs';
 
 const noFiles = { readFile: async () => 'prompt', stat: async () => { throw Object.assign(new Error('missing'), { code: 'ENOENT' }); } };
 test('parser rejects unknown, duplicate, missing-value and unsupported command options', () => {
@@ -41,12 +41,12 @@ test('one JSON result on stdout and stable exit codes for command failures', asy
   }
 });
 test('help/version and invalid arguments execute through real ESM subprocesses without a browser', () => {
-  for (const command of ['ask','review','image','followup','account','quota']) {
+  for (const command of ['ask','review','image','followup','account','quota','browser']) {
     const entry = fileURLToPath(new URL(`../scripts/${command}.mjs`, import.meta.url));
     const help = spawnSync(process.execPath, [entry, '--help'], { encoding: 'utf8', timeout: 10000,
       env: { ...process.env, CHATGPT_WEB_CDP_URL: '', CHATGPT_WEB_BROWSER_MODULE: '' } });
     assert.equal(help.status, 0, help.stderr);
-    assert.match(help.stdout, /chatgpt-web 0\.2\.0/);
+    assert.match(help.stdout, new RegExp(`chatgpt-web ${VERSION.replace(/\./g, '\\.')}(\\s|$)`));
     const bad = spawnSync(process.execPath, [entry, '--unknown'], { encoding: 'utf8', timeout: 10000 });
     assert.equal(bad.status, 2, bad.stderr);
     assert.equal(JSON.parse(bad.stdout).error.code, 'USAGE');
@@ -63,4 +63,27 @@ test('Google may reuse its existing session, while email SSO still requires a ta
   const result = await validateOptions(parseArgs(['account','--google']));
   assert.equal(result.provider, 'google');
   assert.equal(result.email, undefined);
+});
+
+test('browser actions parse, validate and dispatch through their own service', async () => {
+  assert.equal(parseArgs(['browser', 'status']).action, 'status');
+  assert.equal(parseArgs(['browser']).command, 'browser');
+  assert.equal((await validateOptions(parseArgs(['browser', 'login']))).timeoutMs, 300000);
+  const start = await validateOptions(parseArgs(['browser', 'start', '--headless', '--chrome', 'C:\\tools\\chrome.exe', '--timeout', '30']));
+  assert.equal(start.action, 'start');
+  assert.equal(start.headless, true);
+  assert.equal(start.chrome, 'C:\\tools\\chrome.exe');
+  assert.equal(start.timeoutMs, 30000);
+  assert.equal(start.lockTimeoutMs, 600000);
+  assert.throws(() => parseArgs(['browser', '--unknown']), { code: 'USAGE' });
+  for (const args of [['browser', 'explode'], ['browser', 'login', '--headless']])
+    await assert.rejects(validateOptions(parseArgs(args), noFiles), { code: 'USAGE' });
+  const output = [];
+  await main(null, { argv: ['browser', 'status'], stdout: line => output.push(line),
+    browser: async options => ({ action: options.action, running: false }) });
+  const result = JSON.parse(output[0]);
+  assert.equal(result.ok, true);
+  assert.equal(result.command, 'browser');
+  assert.equal(result.action, 'status');
+  assert.equal(result.running, false);
 });

@@ -15,7 +15,13 @@ test('private configuration is optional, validates schema, and rejects corruptio
   const file = join(directory, 'config.json');
   await writeFile(file, JSON.stringify({ endpoint: 'http://127.0.0.1:9222' }));
   assert.equal((await loadBrowserConfig()).endpoint, 'http://127.0.0.1:9222');
-  for (const value of ['{', 'null', '[]', '{"endpoint":true}', '{"endpoint":""}', '{"unexpected":"value"}']) {
+  await writeFile(file, JSON.stringify({ managed: false, chromePath: 'C:\\browsers\\chrome.exe', headless: true }));
+  const managed = await loadBrowserConfig();
+  assert.equal(managed.managed, false);
+  assert.equal(managed.chromePath, 'C:\\browsers\\chrome.exe');
+  assert.equal(managed.headless, true);
+  for (const value of ['{', 'null', '[]', '{"endpoint":true}', '{"endpoint":""}', '{"unexpected":"value"}',
+    '{"managed":"no"}', '{"chromePath":42}', '{"headless":"yes"}']) {
     await writeFile(file, value);
     await assert.rejects(loadBrowserConfig(), { code: 'CONFIG_INVALID' });
   }
