@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased maintenance
+
+- 固定开发格式工具并接入现有 CI；补充隔离验证、候选构建、健康检查、代码/数据回退边界与源码阅读路线。运行接口与数据格式保持不变。
+
 ## 0.3.0 — 2026-10-25
 
 - Launch an isolated managed browser when no CDP endpoint or adapter is configured: a locally discovered Chromium-family executable (Chrome/Chromium/Edge/Brave; `CHATGPT_WEB_CHROME` or config `chromePath` overrides) with a dedicated fresh profile under the private data directory and an ephemeral loopback debug port. An explicit endpoint or adapter always takes priority, and a configured-but-unreachable endpoint is an error, never a fallback launch trigger.

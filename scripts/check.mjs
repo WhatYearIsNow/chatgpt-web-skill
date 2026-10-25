@@ -13,11 +13,12 @@ const skill = await readFile(join(root, 'SKILL.md'), 'utf8');
 if (!/^---\r?\nname: chatgpt-web\r?\ndescription:/m.test(skill)) failures.push('Invalid skill frontmatter');
 const pkg = JSON.parse(await readFile(join(root, 'package.json'), 'utf8'));
 if (pkg.license !== 'MIT' || !pkg.private || pkg.dependencies) failures.push('Unexpected package metadata or runtime dependencies');
-const forbiddenRoots = new Set(['data','state','artifacts','coverage','node_modules']);
+const forbiddenRoots = new Set(['data','state','artifacts','coverage']);
 let modules = 0, files = 0;
 async function walk(directory) {
   for (const name of await readdir(directory)) {
-    if (name === '.git') continue;
+    // Development-only formatter dependencies are not publication source.
+    if (directory === root && ['.git', 'node_modules'].includes(name)) continue;
     const path = join(directory, name);
     const rel = relative(root, path).replaceAll('\\', '/');
     const info = await lstat(path);

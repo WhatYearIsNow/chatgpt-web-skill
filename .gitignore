@@ -13,3 +13,7 @@ coverage/
 .DS_Store
 Thumbs.db
 .test-tmp/
+
+.ruff_cache/
+
+__pycache__/

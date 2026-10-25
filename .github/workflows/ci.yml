@@ -34,6 +34,10 @@ jobs:
           $taskChrome = Join-Path $env:ProgramFiles 'Google/Chrome/Application/chrome.exe'
           if (-not (Test-Path -LiteralPath $taskChrome)) { throw 'Runner Chrome was not found' }
           "CHATGPT_WEB_TEST_CHROME=$taskChrome" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+      - run: npm ci --ignore-scripts --no-audit --no-fund
+      - name: Maintenance style checks
+        run: git diff --check
+      - run: npm run format:check
       - run: npm run check
       - run: npm test
       - run: npm pack --dry-run --json
