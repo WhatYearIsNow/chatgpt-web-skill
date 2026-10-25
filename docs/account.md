@@ -49,6 +49,11 @@ a target email, a chooser stops for manual selection; the tool never picks an
 arbitrary account. An existing Google session that redirects directly can complete
 automatically.
 
+Because an already-matching target returns `changed: false, verified: true`
+without attempting a logout, running `account --email TARGET` before a batch is a
+side-effect-free identity assertion: it either switches to the target or confirms
+the current session already is the target.
+
 The default driver recognizes the existing `/settings/account` route and the
 `#settings/Account` account-settings context. It accepts explicit settings email
 fields, associated email labels, and the full-page settings Change email control.
@@ -103,6 +108,12 @@ Authorized live checks through the installed public CLI passed:
 - Email SSO switched back from Google with `changed: true`, `verified: true`,
   matching the explicit target. A separate fresh settings page then independently
   confirmed restoration to this run's initial account.
+- 2026-10-25: a 16-image batch completed across two accounts through a loopback
+  relay endpoint. After an observed limit the loop stopped; an email-SSO switch
+  reported `ACCOUNT_VERIFICATION_REQUIRED` under `--keep-open`, the verification
+  code was entered manually, and re-running the same command returned
+  `changed: false`, `verified: true`. Resuming the loop while skipping existing
+  outputs produced the remaining images without further intervention.
 
 Earlier navigation timeouts were not reproduced in those successful runs; their
 precise earlier cause is not claimed to be established. A separate live failure

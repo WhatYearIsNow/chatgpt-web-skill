@@ -35,7 +35,7 @@ node scripts/chatgpt-web.mjs ask --prompt '只回复：收到'
 Linux 可用 `google-chrome --remote-debugging-port=9222 --user-data-dir="$HOME/.local/share/chatgpt-web-browser"`；macOS 使用 Chrome 应用的可执行路径与新的 profile 目录。
 Chrome 136 起，默认浏览器数据目录不再支持旧式调试端口参数，需要非默认目录；参见 [Chrome 官方说明](https://developer.chrome.com/blog/remote-debugging-port)。不要复制现有 profile。
 
-工具只连接 loopback HTTP/WS 端点，不自动启动浏览器或批准系统弹窗。已有可信中继可直接配置 WebSocket 地址。
+工具只连接 loopback HTTP/WS 端点，不自动启动浏览器或批准系统弹窗。已有可信中继可直接配置 WebSocket 地址，例如 `CHATGPT_WEB_CDP_URL=ws://127.0.0.1:9333`；纯 WebSocket 中继与 Chrome 调试开关模式（`chrome://inspect/#remote-debugging`）没有 `/json/version` 页面，必须用 `ws://` 形态直连。
 若已有自己的浏览器连接库，可显式指定 `CHATGPT_WEB_BROWSER_MODULE`，详见 [架构和适配器接口](docs/architecture.md)。
 `.env.example` 只是变量示例；CLI 不自动加载 `.env`。也可在私有运行数据目录的 `config.json` 持久保存 `endpoint` 或 `browserModule`；显式连接参数或环境变量优先，见 [迁移说明](docs/migration.md)。
 
@@ -74,7 +74,25 @@ JSON 结果的 `outputs` 数组包含输出路径或正文。部分失败也会�
 
 发送状态不明时先查看会话，勿自动重试。所有命令只操作自己创建的页，且不会清除已有草稿。
 文本回收需要约 15 秒正文稳定窗；设置过短的 timeout 会明确失败，不会跳过稳定检查。清理另有独立的有界等待。
-切号会改变该浏览器 profile 的共享登录状态；邮箱 SSO 要求精确邮箱，`--google` 可使用已有 Google 登录并报告实际邮箱。遇到密码、验证码、注册或人机检查时停止，详见 [切号说明](docs/account.md)。
+切号会改变该浏览器 profile 的共享登录状态；邮箱 SSO 要求精确邮箱，`--google` 可使用已有 Google 登录并报告实际邮箱。目标邮箱已是当前账号时返回 `changed:false, verified:true`，不触发登出，可作为批量任务前的安全身份断言。遇到密码、验证码、注册或人机检查时停止，详见 [切号说明](docs/account.md)。
+
+## 批量任务模板
+
+批量生图等循环任务先跑通单张冒烟（例如 `ask --prompt "只回复：收到"`），确认端点与账号可用。**循环中不要丢弃 stderr**：诊断与进度只写 stderr，用 `2>/dev/null` 之类丢弃后，失败容易被误判为完成。每个条目核对退出码与 JSON 回执的 `ok`，非零退出码立即停止循环——限额（退出码 3）按 [切号说明](docs/account.md) 处理后重跑同一循环即可续作；发送状态不明（退出码 4）先人工检查会话；都不自动重试或换号。
+
+```sh
+mkdir -p gen
+for f in prompts/*.txt; do
+  name=$(basename "$f" .txt)
+  out="gen/$name.png"
+  [ -f "$out" ] && continue    # 重跑时跳过已完成
+  CHATGPT_WEB_CDP_URL="ws://127.0.0.1:9333" \
+  node scripts/chatgpt-web.mjs image --prompt-file "$f" --out "$out" \
+    > "gen/$name.json" || { echo "stopped at $name (exit $?)"; break; }
+done
+```
+
+stdout 回执逐张存档便于核对。示例端点是本机中继的 `ws://` 形态，按实际端点调整；`http://` 形态要求对端提供 `/json/version`。`--candidates N` 在一次命令内生成 N 张独立候选，不需要外层循环。
 
 ## 数据、测试与贡献
 

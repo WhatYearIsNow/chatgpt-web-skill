@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+- Explain CDP endpoint forms in connection failures: `ERR_CDP_DISCOVERY` now states that only http(s) endpoints probe `/json/version`, that ws(s) endpoints connect directly, and that Chrome's `chrome://inspect/#remote-debugging` switch mode intentionally serves 404 there because it exposes only the browser WebSocket endpoint (use the ws:// form, such as a local relay).
+- Report unreachable discovery endpoints as `ERR_CDP_DISCOVERY` with the probe URL instead of leaking a raw fetch error, and name the endpoint in WebSocket handshake failures.
+- Add a batch image-generation loop template with per-item exit-code checks and a warning against discarding stderr; document `changed: false, verified: true` as the side-effect-free identity assertion before batch runs.
+
 ## 0.2.0 — 2026-10-24
 
 - First public release, with Windows Node 22/24 CI and source archive checksums.

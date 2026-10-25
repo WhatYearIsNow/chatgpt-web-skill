@@ -28,7 +28,7 @@ function frame(data, opcode = 1) {
   return Buffer.concat([prefix, payload]);
 }
 
-async function fixture(t, { command, http, handshake = true } = {}) {
+async function fixture(t, { command, http, handshake = true, destroyUpgrade = false } = {}) {
   const requests = [];
   const sockets = new Set();
   let base;
@@ -40,6 +40,7 @@ async function fixture(t, { command, http, handshake = true } = {}) {
   });
   server.on('connection', (socket) => { sockets.add(socket); socket.on('close', () => sockets.delete(socket)); });
   server.on('upgrade', (req, socket) => {
+    if (destroyUpgrade) return socket.destroy();
     if (!handshake) return;
     const accept = createHash('sha1').update(req.headers['sec-websocket-key'] + '258EAFA5-E914-47DA-95CA-C5AB0DC85B11').digest('base64');
     socket.write('HTTP/1.1 101 Switching Protocols\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Accept: ' + accept + '\r\n\r\n');
@@ -316,6 +317,37 @@ test('discovery rejects redirects, malformed responses and remote discovered end
       await assert.rejects(connectToUserChrome({ endpoint: server.base, timeoutMs: 2000 }));
     });
   }
+});
+
+const escaped = (value) => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
+test('discovery failures explain endpoint forms and Chrome switch-mode 404', async (t) => {
+  const server = await fixture(t, { http: (_, res) => { res.writeHead(404); res.end('not found'); } });
+  const error = await connectToUserChrome({ endpoint: server.base, timeoutMs: 2000 }).then(() => null, (failure) => failure);
+  assert.equal(error.code, 'ERR_CDP_DISCOVERY');
+  assert.match(error.message, new RegExp(escaped(`${server.base}/json/version`)));
+  assert.match(error.message, /HTTP 404/);
+  assert.match(error.message, /ws\(s\) endpoints connect directly/);
+  assert.match(error.message, /chrome:\/\/inspect\/#remote-debugging/);
+  assert.match(error.message, /ws:\/\/127\.0\.0\.1:9333/);
+});
+
+test('unreachable discovery endpoints report ERR_CDP_DISCOVERY with the probe URL', async () => {
+  const temp = createServer();
+  await new Promise((resolveListen) => temp.listen(0, '127.0.0.1', resolveListen));
+  const dead = 'http://127.0.0.1:' + temp.address().port;
+  await new Promise((resolveClose) => temp.close(resolveClose));
+  const error = await connectToUserChrome({ endpoint: dead, timeoutMs: 2000 }).then(() => null, (failure) => failure);
+  assert.equal(error.code, 'ERR_CDP_DISCOVERY');
+  assert.match(error.message, new RegExp(escaped(`${dead}/json/version`)));
+  assert.match(error.message, /ws\(s\) endpoints connect directly/);
+});
+
+test('handshake failures name the endpoint', async (t) => {
+  const server = await fixture(t, { destroyUpgrade: true });
+  const error = await connectToUserChrome({ endpoint: server.ws, timeoutMs: 2000 }).then(() => null, (failure) => failure);
+  assert.equal(error.code, 'ERR_CDP_CONNECT');
+  assert.match(error.message, new RegExp(escaped(server.ws)));
 });
 
 test('discovery, WebSocket handshake and initialization each have bounded timeouts', async (t) => {
