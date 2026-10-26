@@ -4,6 +4,22 @@ The automated suite uses direct ESM imports, real CLI subprocesses, temporary
 local data, local WebSocket servers and an optional disposable Chromium profile.
 It never uploads private files, switches a real account, or consumes image quota.
 
+## Browser selection patch — 2026-10-26 (0.3.1, unreleased)
+
+Windows Node.js 22.23.4 and 24.15.0 each passed 178 tests, with 0 failures and
+0 skips, including disposable Chrome integration. Formatting, source/package
+exclusions and skill metadata validation also passed. No production ChatGPT
+message, account switch or image request was made in this verification.
+
+New checks cover saved connection selection across browser commands, no managed
+fallback on external connection failure, explicit managed selection, disconnect
+on failed login, and profile pins on every owned task tab. The real Chrome test
+reads the disposable profile's actual Profile Path, accepts the matching path,
+rejects a different path before navigating the site and preserves existing tabs.
+Offline tests also reject unreadable profile evidence and a later tab whose
+profile differs from the first one. These checks do not claim the user's live
+browser is currently running or logged in; read-only status reports policy only.
+
 ## Current Windows record — 2026-10-25
 
 | Runtime | Environment | Passed | Failed | Skipped |

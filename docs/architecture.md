@@ -30,8 +30,23 @@ Second, `CHATGPT_WEB_BROWSER_MODULE` (or config.json `browserModule`) names an a
 
 An adapter may additionally expose `forgetSession(targetId)` to support account read recovery. Without that optional method, recovery fails with the original error; no browser operation is repeated.
 
+`lib/config.mjs` resolves one connection policy for both tasks and browser commands.
+Optional `profilePath` (or `CHATGPT_WEB_PROFILE_PATH`) pins the absolute profile
+directory for that selected connection. The transport wraps `createTarget`:
+create an owned internal version tab, read its Profile Path, compare it with
+the pin, then navigate the same target to the requested URL. Every new tab is
+checked, rather than trusting process flags, Local State or an earlier probe.
+Mismatch/unavailable evidence closes only that owned tab and fails before site
+navigation. Explicit endpoint/adapter arguments replace the persisted policy
+as a whole, including its pin. No existing profile directory is opened or copied.
+
 Third, with neither configured — and managed launching not disabled (`CHATGPT_WEB_MANAGED=0` or config.json `"managed": false`) — `lib/launch.mjs` starts a **managed browser**: a locally discovered Chromium-family executable (env `CHATGPT_WEB_CHROME` or config.json `chromePath` overrides the platform candidate list) running with a dedicated fresh user-data-dir at `<data dir>/browser` and an ephemeral loopback debug port (`--remote-debugging-port=0`). An already-running managed instance is detected by connecting to its published endpoint, which also discards stale port files. The launched process is detached and outlives the CLI; its first interactive ChatGPT login persists in the managed profile and is reused by every later run, so no login repeats. An explicit endpoint or adapter is always preferred; when configured but unreachable it produces a connection error — a second browser is never launched as a fallback. The user's default browser, its profiles and its DevToolsActivePort file are never read, copied or modified; no OS approval dialog is clicked and no password is handled. `browser status|start|login|stop` exposes this lifecycle read-only or under the shared browser mutex. `connectWithApproval()` remains a compatibility name; the default implementation does not approve anything.
 Protocol reference: [Chrome DevTools Protocol](https://chromedevtools.github.io/devtools-protocol/).
+
+Browser commands honor the same selection: status reports configuration without
+probing an external connection; start verifies it; login owns a tab there; stop
+leaves external browsers running. `--managed` explicitly selects the isolated
+lifecycle independently of the persisted existing-browser connection.
 
 ## Task contract
 

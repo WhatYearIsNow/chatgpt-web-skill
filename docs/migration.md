@@ -42,3 +42,35 @@ is configured). With none of `endpoint`/`browserModule` present and `managed`
 not disabled, the CLI launches a dedicated managed browser under
 `<data dir>/browser` whose first interactive login persists and is reused;
 configure an explicit `endpoint` to keep using an existing browser instead.
+
+Since the next patch, `browser status|start|login|stop` follows this same policy.
+`status` only reports the selected connection; it does not connect, verify a
+profile or open a browser. `start` checks an existing endpoint/adapter, and
+`login` opens its own login tab there. Neither silently launches a managed
+browser on connection failure. `stop` never shuts down an external browser.
+Use `browser ... --managed` only when explicitly selecting the isolated managed
+instance, including to inspect or stop a previously launched one.
+
+To pin an existing browser profile, add `profilePath` with its absolute path
+from `chrome://version` to your private configuration. For example, generate
+the file locally, substituting the actual selected profile directory:
+
+```powershell
+$profilePath = Join-Path $env:LOCALAPPDATA 'Google\Chrome\User Data\Profile 4'
+@{ endpoint = 'ws://127.0.0.1:9333'; profilePath = $profilePath; managed = $false } |
+  ConvertTo-Json | Set-Content -Encoding utf8NoBOM (Join-Path $env:LOCALAPPDATA 'chatgpt-web\config.json')
+```
+
+This is a per-machine choice, not a bundled default or browser launcher. Check
+existing configuration before changing it. Each new task tab first reads the
+browser's Profile Path on its internal version page, then navigates that same
+verified tab. A missing/unreadable path or mismatch stops the task before site
+navigation (`PROFILE_UNVERIFIED` or `PROFILE_MISMATCH`); only its owned tab is
+closed. It never reads cookies or copies a profile. A pin requires an endpoint
+or adapter and cannot silently become a managed launch directory.
+
+An explicit `CHATGPT_WEB_CDP_URL`/`CHATGPT_WEB_BROWSER_MODULE` replaces the whole
+saved connection, including its pin, when intentionally selecting another
+browser. `CHATGPT_WEB_PROFILE_PATH` can supply a pin for that explicit connection.
+Changing `CHATGPT_WEB_DATA_DIR` also selects a different configuration namespace;
+carry your connection policy into that directory when it should still apply.

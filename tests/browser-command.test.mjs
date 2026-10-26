@@ -14,6 +14,7 @@ test('browser actions route to the managed lifecycle under the shared browser lo
     },
   };
   const d = {
+    resolveBrowserOptions: async () => ({ mode: 'managed', chromePath: null, headless: false }),
     acquireLock: async (task) => {
       calls.push(['lock', task]);
       return async () => calls.push('release');
@@ -82,4 +83,111 @@ test('browser actions route to the managed lifecycle under the shared browser lo
   const stop = await browserAction({ action: 'stop', lockTimeoutMs: 100 }, d);
   assert.equal(stop.stopped, true);
   assert.ok(calls.includes('stop'));
+});
+
+test('configured browser commands never launch or close the managed browser', async () => {
+  const calls = [];
+  const selected = { mode: 'endpoint', endpoint: 'ws://127.0.0.1:9333', profilePath: '/expected/profile' };
+  const d = {
+    resolveBrowserOptions: async () => selected,
+    acquireLock: async () => {
+      calls.push('lock');
+      return () => calls.push('release');
+    },
+    ensureManagedBrowser: async () => assert.fail('must not launch'),
+    closeManagedBrowser: async () => assert.fail('must not stop another browser'),
+    browserStatus: async () => assert.fail('must not report a different browser'),
+    connectToUserChrome: async (options) => {
+      assert.equal(options.endpoint, selected.endpoint);
+      assert.equal(options.profilePath, selected.profilePath);
+      calls.push('connect');
+      return {
+        createTarget: async (url) => {
+          calls.push(url);
+          return 'owned';
+        },
+        close: () => calls.push('disconnect'),
+      };
+    },
+    Page: class {
+      async close() {
+        calls.push('close-owned');
+      }
+    },
+    waitForLogin: async () => true,
+  };
+  const status = await browserAction({ action: 'status' }, d);
+  assert.equal(status.mode, 'endpoint');
+  assert.equal(status.running, null);
+  assert.equal(status.profileVerified, false);
+  assert.deepEqual(calls, [], 'status must not connect or open a tab');
+  assert.equal((await browserAction({ action: 'stop' }, d)).reason, 'external-browser');
+  assert.deepEqual(calls, []);
+  const result = await browserAction({ action: 'start' }, d);
+  assert.equal(result.endpoint, selected.endpoint);
+  assert.equal(result.profileVerified, true);
+  assert.deepEqual(calls, ['lock', 'connect', 'about:blank', 'close-owned', 'disconnect', 'release']);
+  calls.length = 0;
+  assert.equal((await browserAction({ action: 'login' }, d)).loggedIn, true);
+  assert.deepEqual(calls, [
+    'lock',
+    'connect',
+    'https://chatgpt.com/',
+    'close-owned',
+    'disconnect',
+    'release',
+  ]);
+  calls.length = 0;
+  await assert.rejects(browserAction({ action: 'start', headless: true }, d), {
+    code: 'ERR_BROWSER_CONFIGURATION',
+  });
+  d.connectToUserChrome = async () => {
+    throw new Error('endpoint unavailable');
+  };
+  await assert.rejects(browserAction({ action: 'start' }, d), /endpoint unavailable/);
+  assert.deepEqual(calls, ['lock', 'release'], 'failed connection must not fall back to launch');
+});
+
+test('explicit managed mode bypasses saved connections; disabled mode fails without launching', async () => {
+  let launched = false;
+  const d = {
+    resolveBrowserOptions: async () => ({ mode: 'disabled' }),
+    acquireLock: async () => async () => {},
+    ensureManagedBrowser: async () => {
+      launched = true;
+      return { client: { close() {} }, endpoint: 'ws://127.0.0.1:1' };
+    },
+  };
+  await assert.rejects(browserAction({ action: 'start' }, d), { code: 'ERR_CDP_CONFIGURATION' });
+  assert.equal(launched, false);
+  d.resolveBrowserOptions = async () => assert.fail('explicit managed mode must bypass saved configuration');
+  assert.equal((await browserAction({ action: 'start', managed: true }, d)).mode, 'managed');
+  assert.equal(launched, true);
+});
+
+test('failed external login still closes its owned tab, disconnects and releases the lock', async () => {
+  const calls = [];
+  await assert.rejects(
+    browserAction(
+      { action: 'login' },
+      {
+        resolveBrowserOptions: async () => ({ mode: 'adapter', browserModule: '/adapter.mjs' }),
+        acquireLock: async () => () => calls.push('release'),
+        connectToUserChrome: async () => ({
+          createTarget: async () => 'owned',
+          close: () => calls.push('disconnect'),
+        }),
+        Page: class {
+          async close() {
+            calls.push('close-owned');
+          }
+        },
+        waitForLogin: async () => {
+          throw new Error('login timeout');
+        },
+      },
+    ),
+    /login timeout/,
+  );
+  assert.deepEqual(calls, ['close-owned', 'disconnect', 'release']);
 });
