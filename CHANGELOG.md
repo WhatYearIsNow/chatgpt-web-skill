@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.3.1 — Unreleased
+
+- Make browser commands honor the same saved endpoint/adapter as tasks; never silently launch a managed browser for an existing connection. Status distinguishes configured policy from online/profile verification, and stop leaves external browsers running. Add explicit `browser ... --managed` selection.
+- Add an optional private `profilePath` pin (`CHATGPT_WEB_PROFILE_PATH` for explicit connections). Verify the actual profile of every owned new task tab through the internal version page before navigating that same tab; fail closed on mismatch or unavailable evidence. Keep machine-specific defaults out of the public package.
+
 ## Unreleased maintenance
 
 - 固定开发格式工具并接入现有 CI；补充隔离验证、候选构建、健康检查、代码/数据回退边界与源码阅读路线。运行接口与数据格式保持不变。

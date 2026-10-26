@@ -133,6 +133,7 @@ test('browser actions parse, validate and dispatch through their own service', a
   assert.equal(start.chrome, 'C:\\tools\\chrome.exe');
   assert.equal(start.timeoutMs, 30000);
   assert.equal(start.lockTimeoutMs, 600000);
+  assert.equal((await validateOptions(parseArgs(['browser', 'start', '--managed']))).managed, true);
   assert.throws(() => parseArgs(['browser', '--unknown']), { code: 'USAGE' });
   for (const args of [
     ['browser', 'explode'],
