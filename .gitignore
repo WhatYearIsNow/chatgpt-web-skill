@@ -13,6 +13,7 @@ coverage/
 .DS_Store
 Thumbs.db
 .test-tmp/
+test-results/
 
 .ruff_cache/
 

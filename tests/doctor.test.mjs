@@ -85,3 +85,55 @@ test('doctor launches the managed browser and verifies login', async () => {
   assert.equal(result.ok, true);
   assert.equal(result.mode, 'managed');
 });
+
+const navigateClient = (navigateResult) => {
+  const closed = { value: false };
+  return {
+    closed,
+    createTarget: async () => 'target-1',
+    session: async () => 'sid-1',
+    on: () => () => {},
+    call: async (method) => {
+      if (method === 'Network.enable') return {};
+      if (method === 'Page.navigate') return navigateResult;
+      return {};
+    },
+    close: async () => {
+      closed.value = true;
+    },
+  };
+};
+
+test('doctor reports network-unreachable when navigation fails immediately', async () => {
+  const client = navigateClient({ errorText: 'net::ERR_PROXY_CONNECTION_FAILED' });
+  const result = await doctor(
+    {},
+    {
+      ...baseOverrides,
+      resolveBrowserOptions: async () => ({ mode: 'dedicated', dedicatedPort: 9230 }),
+      ensureDedicatedBrowser: async () => ({ client }),
+    },
+  );
+  assert.equal(result.ok, false);
+  assert.equal(result.reason, 'network-unreachable');
+  assert.equal(result.network.kind, 'proxy');
+  assert.match(result.hint, /代理/);
+  assert.equal(client.closed.value, true);
+});
+
+test('doctor reports network-unreachable from the chrome-error page', async () => {
+  const client = navigateClient({ frameId: 'frame-1' });
+  const result = await doctor(
+    {},
+    {
+      ...baseOverrides,
+      resolveBrowserOptions: async () => ({ mode: 'endpoint', endpoint: 'http://127.0.0.1:9222' }),
+      connectToUserChrome: async () => client,
+      loginState: async () => 'unknown',
+      readErrorPage: async () => ({ kind: 'connection', code: 'ERR_CONNECTION_CLOSED' }),
+    },
+  );
+  assert.equal(result.ok, false);
+  assert.equal(result.reason, 'network-unreachable');
+  assert.equal(result.network.kind, 'connection');
+});
