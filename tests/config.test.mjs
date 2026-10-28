@@ -113,7 +113,10 @@ test('dedicated mode is selected by config or env, with a validated port', async
     await rm(directory, { recursive: true, force: true });
   });
   const file = join(directory, 'config.json');
-  await writeFile(file, JSON.stringify({ dedicated: true, dedicatedPort: 9240, headless: true, dedicatedMinimized: true }));
+  await writeFile(
+    file,
+    JSON.stringify({ dedicated: true, dedicatedPort: 9240, headless: true, dedicatedMinimized: true }),
+  );
   const policy = await resolveBrowserOptions();
   assert.equal(policy.mode, 'dedicated');
   assert.equal(policy.dedicatedPort, 9240);

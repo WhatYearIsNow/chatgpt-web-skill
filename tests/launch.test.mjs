@@ -292,7 +292,11 @@ test('dedicated dir and launch args isolate the profile with a fixed port', () =
   const minArgs = dedicatedLaunchArgs({ profileDir: 'd', port: 9230, minimized: true });
   assert.ok(minArgs.includes('--window-position=-32000,-32000'));
   assert.ok(!minArgs.includes('--headless=new'));
-  assert.ok(!dedicatedLaunchArgs({ profileDir: 'd', port: 9230, headless: true, minimized: true }).includes('--window-position'));
+  assert.ok(
+    !dedicatedLaunchArgs({ profileDir: 'd', port: 9230, headless: true, minimized: true }).includes(
+      '--window-position',
+    ),
+  );
 });
 
 test('minimizeBrowserWindows minimizes the window of a page target, best-effort', async () => {
@@ -300,8 +304,7 @@ test('minimizeBrowserWindows minimizes the window of a page target, best-effort'
   const client = {
     call: async (method, params) => {
       calls.push(method);
-      if (method === 'Target.getTargets')
-        return { targetInfos: [{ type: 'page', targetId: 'page-1' }] };
+      if (method === 'Target.getTargets') return { targetInfos: [{ type: 'page', targetId: 'page-1' }] };
       if (method === 'Browser.getWindowForTarget') {
         assert.equal(params.targetId, 'page-1');
         return { windowId: 7 };
@@ -313,11 +316,7 @@ test('minimizeBrowserWindows minimizes the window of a page target, best-effort'
     },
   };
   await minimizeBrowserWindows(client);
-  assert.deepEqual(calls, [
-    'Target.getTargets',
-    'Browser.getWindowForTarget',
-    'Browser.setWindowBounds',
-  ]);
+  assert.deepEqual(calls, ['Target.getTargets', 'Browser.getWindowForTarget', 'Browser.setWindowBounds']);
   // No page target -> no-op, no throw
   await minimizeBrowserWindows({
     call: async () => ({ targetInfos: [{ type: 'other' }] }),
