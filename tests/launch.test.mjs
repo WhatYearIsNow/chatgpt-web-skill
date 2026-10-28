@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { mkdtemp, mkdir, writeFile, readFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { join, resolve } from 'node:path';
 import { EventEmitter } from 'node:events';
 import {
   browserCandidates,
@@ -12,6 +12,12 @@ import {
   managedLaunchArgs,
   ensureManagedBrowser,
   closeManagedBrowser,
+  dedicatedBrowserDir,
+  dedicatedLaunchArgs,
+  ensureDedicatedBrowser,
+  dedicatedStatus,
+  minimizeBrowserWindows,
+  DEFAULT_DEDICATED_PORT,
 } from '../lib/launch.mjs';
 
 const tempDirectory = async () =>
@@ -271,4 +277,124 @@ test('closeManagedBrowser confirms shutdown through the port file, not the comma
   });
   assert.equal(stubborn.stopped, false);
   assert.equal(stubborn.reason, 'still-running');
+});
+
+test('dedicated dir and launch args isolate the profile with a fixed port', () => {
+  assert.equal(dedicatedBrowserDir('d'), join(resolve('d'), 'dedicated'));
+  assert.equal(DEFAULT_DEDICATED_PORT, 9230);
+  const args = dedicatedLaunchArgs({ profileDir: join('d', 'dedicated'), port: 9230, headless: true });
+  assert.ok(args.includes('--user-data-dir=' + join('d', 'dedicated')));
+  assert.ok(args.includes('--remote-debugging-port=9230'));
+  assert.ok(args.includes('--remote-debugging-address=127.0.0.1'));
+  assert.ok(args.includes('--headless=new'));
+  assert.ok(!dedicatedLaunchArgs({ profileDir: 'd', port: 9230 }).includes('--headless=new'));
+  // minimized real window starts off-screen; headless does not add window args
+  const minArgs = dedicatedLaunchArgs({ profileDir: 'd', port: 9230, minimized: true });
+  assert.ok(minArgs.includes('--window-position=-32000,-32000'));
+  assert.ok(!minArgs.includes('--headless=new'));
+  assert.ok(!dedicatedLaunchArgs({ profileDir: 'd', port: 9230, headless: true, minimized: true }).includes('--window-position'));
+});
+
+test('minimizeBrowserWindows minimizes the window of a page target, best-effort', async () => {
+  const calls = [];
+  const client = {
+    call: async (method, params) => {
+      calls.push(method);
+      if (method === 'Target.getTargets')
+        return { targetInfos: [{ type: 'page', targetId: 'page-1' }] };
+      if (method === 'Browser.getWindowForTarget') {
+        assert.equal(params.targetId, 'page-1');
+        return { windowId: 7 };
+      }
+      if (method === 'Browser.setWindowBounds') {
+        assert.equal(params.windowId, 7);
+        assert.equal(params.bounds.windowState, 'minimized');
+      }
+    },
+  };
+  await minimizeBrowserWindows(client);
+  assert.deepEqual(calls, [
+    'Target.getTargets',
+    'Browser.getWindowForTarget',
+    'Browser.setWindowBounds',
+  ]);
+  // No page target -> no-op, no throw
+  await minimizeBrowserWindows({
+    call: async () => ({ targetInfos: [{ type: 'other' }] }),
+  });
+  // Failing CDP -> swallowed (best-effort)
+  await minimizeBrowserWindows({
+    call: async () => {
+      throw new Error('boom');
+    },
+  });
+});
+
+test('a live dedicated browser is reused via the fixed port without launching', async (t) => {
+  const directory = await tempDirectory();
+  t.after(() => rm(directory, { recursive: true, force: true }));
+  const sentinel = { close() {} };
+  let spawns = 0;
+  const result = await ensureDedicatedBrowser({
+    dataDir: directory,
+    port: 9230,
+    timeoutMs: 1000,
+    discover: async (endpoint) => {
+      assert.equal(endpoint, 'http://127.0.0.1:9230');
+      return sentinel;
+    },
+    spawn: () => {
+      spawns++;
+      return fakeChild(t);
+    },
+  });
+  assert.equal(result.reused, true);
+  assert.equal(result.client, sentinel);
+  assert.equal(result.port, 9230);
+  assert.equal(spawns, 0);
+});
+
+test('an absent dedicated browser launches, polls the fixed port, and records connection', async (t) => {
+  const directory = await tempDirectory();
+  t.after(() => rm(directory, { recursive: true, force: true }));
+  const executable = join(directory, 'chrome.exe');
+  await writeFile(executable, '');
+  const sentinel = { close() {} };
+  let attempts = 0;
+  const result = await ensureDedicatedBrowser({
+    dataDir: directory,
+    executable,
+    port: 9231,
+    timeoutMs: 3000,
+    discover: async () => {
+      if (attempts++ === 0) throw new Error('not yet');
+      return sentinel;
+    },
+    spawn: (exe, args) => {
+      assert.equal(exe, executable);
+      assert.ok(args.includes('--remote-debugging-port=9231'));
+      return fakeChild(t);
+    },
+  });
+  assert.equal(result.reused, false);
+  assert.equal(result.client, sentinel);
+  const record = JSON.parse(await readFile(join(directory, 'dedicated-connection.json'), 'utf8'));
+  assert.equal(record.port, 9231);
+  assert.equal(record.endpoint, 'http://127.0.0.1:9231');
+});
+
+test('dedicated status reports running only when the fixed port answers', async (t) => {
+  const directory = await tempDirectory();
+  t.after(() => rm(directory, { recursive: true, force: true }));
+  const executable = join(directory, 'chrome.exe');
+  await writeFile(executable, '');
+  const up = await dedicatedStatus({
+    dataDir: directory,
+    executable,
+    port: 9232,
+    discover: undefined,
+  });
+  // default discovery path: no browser listening -> not running
+  assert.equal(up.running, false);
+  assert.equal(up.port, 9232);
 });

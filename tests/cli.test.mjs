@@ -91,7 +91,7 @@ test('one JSON result on stdout and stable exit codes for command failures', asy
   }
 });
 test('help/version and invalid arguments execute through real ESM subprocesses without a browser', () => {
-  for (const command of ['ask', 'review', 'image', 'followup', 'account', 'quota', 'browser']) {
+  for (const command of ['ask', 'review', 'image', 'followup', 'account', 'quota', 'browser', 'doctor']) {
     const entry = fileURLToPath(new URL(`../scripts/${command}.mjs`, import.meta.url));
     const help = spawnSync(process.execPath, [entry, '--help'], {
       encoding: 'utf8',
@@ -151,4 +151,19 @@ test('browser actions parse, validate and dispatch through their own service', a
   assert.equal(result.command, 'browser');
   assert.equal(result.action, 'status');
   assert.equal(result.running, false);
+});
+
+test('doctor parses without a prompt and dispatches through its own service', async () => {
+  assert.equal(parseArgs(['doctor']).command, 'doctor');
+  assert.equal((await validateOptions(parseArgs(['doctor', '--timeout', '45']))).timeoutMs, 45000);
+  const output = [];
+  await main('doctor', {
+    argv: [],
+    stdout: (line) => output.push(line),
+    doctorRun: async () => ({ ok: true, mode: 'managed', loginState: 'ready' }),
+  });
+  const result = JSON.parse(output[0]);
+  assert.equal(result.ok, true);
+  assert.equal(result.command, 'doctor');
+  assert.equal(result.loginState, 'ready');
 });

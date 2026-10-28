@@ -91,3 +91,51 @@ test('saved profile pins are shared by all commands and explicit connections rep
   await writeFile(file, JSON.stringify({ managed: false }));
   assert.equal((await resolveBrowserOptions()).mode, 'disabled');
 });
+
+test('dedicated mode is selected by config or env, with a validated port', async (t) => {
+  const directory = await mkdtemp(join(process.env.CHATGPT_WEB_TEST_TMP_DIR || tmpdir(), 'dedicated-test-'));
+  const keys = [
+    'CHATGPT_WEB_DATA_DIR',
+    'CHATGPT_WEB_CDP_URL',
+    'CHATGPT_WEB_BROWSER_MODULE',
+    'CHATGPT_WEB_MANAGED',
+    'CHATGPT_WEB_DEDICATED',
+    'CHATGPT_WEB_DEDICATED_PORT',
+  ];
+  const previous = Object.fromEntries(keys.map((key) => [key, process.env[key]]));
+  for (const key of keys) delete process.env[key];
+  process.env.CHATGPT_WEB_DATA_DIR = directory;
+  t.after(async () => {
+    for (const key of keys) {
+      if (previous[key] === undefined) delete process.env[key];
+      else process.env[key] = previous[key];
+    }
+    await rm(directory, { recursive: true, force: true });
+  });
+  const file = join(directory, 'config.json');
+  await writeFile(file, JSON.stringify({ dedicated: true, dedicatedPort: 9240, headless: true, dedicatedMinimized: true }));
+  const policy = await resolveBrowserOptions();
+  assert.equal(policy.mode, 'dedicated');
+  assert.equal(policy.dedicatedPort, 9240);
+  assert.equal(policy.headless, true);
+  assert.equal(policy.dedicatedMinimized, true);
+
+  // env var selects dedicated even without a config
+  await writeFile(file, JSON.stringify({}));
+  process.env.CHATGPT_WEB_DEDICATED = '1';
+  process.env.CHATGPT_WEB_DEDICATED_PORT = '9241';
+  const viaEnv = await resolveBrowserOptions();
+  assert.equal(viaEnv.mode, 'dedicated');
+  assert.equal(viaEnv.dedicatedPort, 9241);
+  process.env.CHATGPT_WEB_DEDICATED = '0';
+  assert.equal((await resolveBrowserOptions()).mode, 'managed');
+
+  // invalid port is rejected
+  for (const value of [0, 70000, 'not-a-port']) {
+    await writeFile(file, JSON.stringify({ dedicated: true, dedicatedPort: value }));
+    await assert.rejects(resolveBrowserOptions(), { code: 'CONFIG_INVALID' });
+  }
+  // dedicated profile pin (a daily profile path) is rejected
+  await writeFile(file, JSON.stringify({ dedicated: true, profilePath: join(directory, 'Profile 4') }));
+  await assert.rejects(resolveBrowserOptions(), { code: 'CONFIG_INVALID' });
+});

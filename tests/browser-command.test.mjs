@@ -191,3 +191,71 @@ test('failed external login still closes its owned tab, disconnects and releases
   );
   assert.deepEqual(calls, ['close-owned', 'disconnect', 'release']);
 });
+
+test('explicit dedicated mode routes to the dedicated lifecycle with a fixed port', async () => {
+  const calls = [];
+  const client = {
+    close() {
+      calls.push('client-close');
+    },
+    createTarget: async () => {
+      calls.push('create-tab');
+      return 'tab-1';
+    },
+  };
+  const d = {
+    acquireLock: async (task) => {
+      calls.push(['lock', task]);
+      return async () => calls.push('release');
+    },
+    dedicatedStatus: async (options) => {
+      calls.push(['dedicated-status', options.port]);
+      return { running: true, port: options.port };
+    },
+    ensureDedicatedBrowser: async (options) => {
+      calls.push(['ensure-dedicated', options.port, options.headless, options.minimized]);
+      return {
+        client,
+        reused: false,
+        endpoint: 'http://127.0.0.1:9250',
+        executable: 'chrome',
+        dir: 'dedicated-dir',
+        port: 9250,
+      };
+    },
+    Page: class {
+      constructor(cdp, targetId) {
+        this.targetId = targetId;
+      }
+      async close() {
+        calls.push(['tab-close', this.targetId]);
+      }
+    },
+    waitForLogin: async () => true,
+  };
+  const status = await browserAction({ action: 'status', dedicated: true, dedicatedPort: '9250' }, d);
+  assert.equal(status.running, true);
+  assert.deepEqual(calls.shift(), ['dedicated-status', 9250]);
+
+  const start = await browserAction(
+    { action: 'start', dedicated: true, dedicatedPort: '9250', headless: true, lockTimeoutMs: 100 },
+    d,
+  );
+  assert.equal(start.port, 9250);
+  assert.equal(start.dataDir, 'dedicated-dir');
+  assert.deepEqual(
+    calls.filter((c) => Array.isArray(c) && c[0] === 'ensure-dedicated'),
+    [['ensure-dedicated', 9250, true, false]],
+  );
+
+  // start --minimized routes the minimized flag to ensureDedicatedBrowser
+  calls.length = 0;
+  await browserAction(
+    { action: 'start', dedicated: true, dedicatedPort: '9250', minimized: true, lockTimeoutMs: 100 },
+    d,
+  );
+  const ensureCall = calls.find((c) => Array.isArray(c) && c[0] === 'ensure-dedicated');
+  assert.equal(ensureCall[1], 9250);
+  assert.equal(ensureCall[2], false, 'minimized start is not headless');
+  assert.equal(ensureCall[3], true, 'minimized flag passed');
+});
