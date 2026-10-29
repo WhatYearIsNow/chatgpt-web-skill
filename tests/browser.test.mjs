@@ -14,6 +14,7 @@ import {
   sleep,
   validateEndpoint,
 } from '../lib/browser.mjs';
+import { activatePage } from '../lib/chatgpt.mjs';
 
 const SILENT = Symbol('no-response');
 // Tests must never load an installed user's default adapter configuration.
@@ -834,4 +835,29 @@ test('waitForFunction timeout finishes native evaluation cleanup before it rejec
     code: 'ERR_BROWSER_TIMEOUT',
   });
   assert.equal(client.pending.size, 0);
+});
+
+test('activatePage retries a transient -32000 attach error and surfaces real errors', async () => {
+  const calls = [];
+  let attempts = 0;
+  const cdp = {
+    async call(method) {
+      calls.push(method);
+      if (method === 'Page.setWebLifecycleState') {
+        attempts++;
+        if (attempts === 1) throw new BrowserError('Not attached to an active page', { code: -32000 });
+      }
+      return {};
+    },
+  };
+  await activatePage(cdp, 'target', 'session');
+  assert.equal(attempts, 2);
+  assert.ok(calls.includes('Emulation.setFocusEmulationEnabled'));
+
+  const failing = {
+    async call() {
+      throw new BrowserError('boom', { code: 'ERR_CDP_PROTOCOL' });
+    },
+  };
+  await assert.rejects(activatePage(failing, 'target', 'session'), /boom/);
 });
