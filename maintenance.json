@@ -1,0 +1,86 @@
+{
+  "schemaVersion": 1,
+  "project": "chatgpt-web-skill",
+  "skillName": "chatgpt-web",
+  "baseline": [
+    [
+      "node",
+      "scripts/check.mjs"
+    ],
+    [
+      "node",
+      "--test",
+      "tests/*.test.mjs"
+    ]
+  ],
+  "test": [
+    [
+      "node",
+      "scripts/check.mjs"
+    ],
+    [
+      "node",
+      "--test",
+      "tests/*.test.mjs"
+    ]
+  ],
+  "check": [
+    [
+      "npm",
+      "ci",
+      "--ignore-scripts",
+      "--no-audit",
+      "--no-fund"
+    ],
+    [
+      "npm",
+      "run",
+      "format:check"
+    ],
+    [
+      "node",
+      "scripts/check.mjs"
+    ]
+  ],
+  "candidate": [
+    [
+      "npm",
+      "pack",
+      "--ignore-scripts",
+      "--pack-destination",
+      "{run}/artifacts"
+    ]
+  ],
+  "artifact": "*.tgz",
+  "archivePrefix": "package/",
+  "health": [
+    [
+      "node",
+      "scripts/chatgpt-web.mjs",
+      "--version"
+    ],
+    [
+      "node",
+      "scripts/chatgpt-web.mjs",
+      "--help"
+    ]
+  ],
+  "preserve": [
+    "data",
+    ".local"
+  ],
+  "format-check": [
+    [
+      "npm",
+      "run",
+      "format:check"
+    ]
+  ],
+  "format": [
+    [
+      "npm",
+      "run",
+      "format"
+    ]
+  ]
+}
