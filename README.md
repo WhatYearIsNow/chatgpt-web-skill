@@ -6,7 +6,7 @@
 
 可作为 agent skill 或独立 CLI 使用的 ChatGPT 网页自动化工具。支持纯文本、ZIP 附件审查、已有会话续问、参考图生图、本地用量记录，以及显式邮箱验证的 SSO 切号。
 
-**v0.3.0 正式版，MIT，零第三方运行依赖。** 需要 Node.js 22.15+。未配置端点时自动启动隔离的托管浏览器（登录一次即持久复用）；也可显式指定已有 CDP 端点。它操作网页 UI，不是官方 API 客户端；UI、语言和账号功能变化可能需要更新选择器。
+**v0.3.1 开发版（最近正式 Release 为 v0.3.0），MIT，零第三方运行依赖。** 需要 Node.js 22.15+。优先使用显式或本机持久配置的 CDP 端点；未配置连接时才自动启动隔离的托管浏览器（登录一次即持久复用）。它操作网页 UI，不是官方 API 客户端；UI、语言和账号功能变化可能需要更新选择器。
 
 **当前验收状态（2026-10-25）：** Windows 本地与 GitHub Actions 的 Node 22/24 全部测试通过（含隔离真实 Chrome 集成）。邮箱 SSO、Google 已有登录、账号恢复、完整单图生成保存与托管浏览器生命周期已通过真实验收。完整范围见 [测试记录](docs/testing.md)。
 
@@ -22,7 +22,15 @@ cd chatgpt-web-skill
 
 作为 skill 使用时，将整个目录放入 agent 的技能目录并命名为 `chatgpt-web`；入口是 [SKILL.md](SKILL.md)。
 
-## 浏览器：零配置从无到有（推荐）
+## 浏览器：先检查本机连接选择
+
+先运行 `node scripts/chatgpt-web.mjs browser status`。普通任务与 `browser start/login` 使用同一份连接配置：显式环境变量优先于私有 `config.json`；已配置日常浏览器时直接复用它，连接失败不会改开隔离 profile。`status` 不连接或开页，已有端点的 `running: null`、`profileVerified: false` 表示尚未探测；`browser start` 才执行连接与 profile 检查。
+
+需要固定某个已登录 profile 时，在私有 `config.json` 中设置 `endpoint` 或可信 `browserModule`、`managed: false`，并将 `profilePath` 设为该 profile 的**绝对路径**（可从 `chrome://version` 的 Profile Path 获取，见 [Chromium 官方说明](https://chromium.googlesource.com/chromium/src/+/main/docs/user_data_dir.md)）。每个新任务标签页会先验证实际 profile 路径，再在同一页导航到 ChatGPT；无法核验或不匹配时停止并关闭该任务页，不发送提示词或上传文件。它不会复制或把此目录用于启动。配置方法和覆盖规则见 [迁移说明](docs/migration.md#persistent-local-configuration)。
+
+`browser stop` 遇到已有端点/适配器返回 `reason: "external-browser"`，不会关闭日常浏览器。确需单独的托管实例时，显式使用 `browser start|login|status|stop --managed`；`--chrome/--headless` 只适用于托管模式。
+
+## 新安装：零配置托管浏览器
 
 **不需要手动准备浏览器。** 未配置任何 CDP 端点时，第一条命令会自动完成：
 
@@ -33,10 +41,10 @@ cd chatgpt-web-skill
 **这个浏览器就是之后所有命令复用的浏览器**：登录态持久保存在上面的托管 profile 里，之后每次运行自动连回同一个窗口，不会再次登录。可用 `browser` 子命令管理它：
 
 ```sh
-node scripts/chatgpt-web.mjs browser status   # 免锁只读体检：可执行文件/是否在跑/端点
-node scripts/chatgpt-web.mjs browser start    # 启动或复用托管浏览器（--headless 可选；无显示器环境用）
-node scripts/chatgpt-web.mjs browser login    # 打开 chatgpt.com 并等你完成一次登录（--timeout 秒，默认 300）
-node scripts/chatgpt-web.mjs browser stop     # 优雅关闭（冲刷 cookie）；下次命令会重新拉起
+node scripts/chatgpt-web.mjs browser status   # 免锁只读报告所选连接；不新开浏览器
+node scripts/chatgpt-web.mjs browser start    # 使用配置的连接；未配置时才启动/复用托管浏览器
+node scripts/chatgpt-web.mjs browser login    # 在所选浏览器打开 chatgpt.com 并等你登录（默认 300 秒）
+node scripts/chatgpt-web.mjs browser stop     # 只关闭托管实例；显式配置已有连接时不关闭浏览器
 ```
 
 首跑推荐顺序：`browser start`（或直接跑任意命令）→ 在弹出的窗口登录一次（或用 `browser login` 等待）→ 之后全自动。机器上没有任何 Chromium 系浏览器时安装一个，或用 `CHATGPT_WEB_CHROME` 指向现有可执行文件。
@@ -58,7 +66,7 @@ Chrome 136 起，默认浏览器数据目录不再支持旧式调试端口参数
 
 工具只连接 loopback HTTP/WS 端点。已有可信中继可直接配置 WebSocket 地址，例如 `CHATGPT_WEB_CDP_URL=ws://127.0.0.1:9333`；纯 WebSocket 中继与 Chrome 调试开关模式（`chrome://inspect/#remote-debugging`）没有 `/json/version` 页面，必须用 `ws://` 形态直连。
 若已有自己的浏览器连接库，可显式指定 `CHATGPT_WEB_BROWSER_MODULE`，详见 [架构和适配器接口](docs/architecture.md)。
-`.env.example` 只是变量示例；CLI 不自动加载 `.env`。也可在私有运行数据目录的 `config.json` 持久保存 `endpoint`、`browserModule`、`chromePath`、`headless` 或 `managed`（设为 `false` 关闭托管启动，恢复"未配置即报错"）；显式连接参数或环境变量优先，见 [迁移说明](docs/migration.md)。
+`.env.example` 只是变量示例；CLI 不自动加载 `.env`。也可在私有运行数据目录的 `config.json` 持久保存 `endpoint`、`browserModule`、`profilePath`、`chromePath`、`headless` 或 `managed`（设为 `false` 关闭托管启动，恢复"未配置即报错"）；显式连接参数或环境变量替换整份持久连接策略（包括 profile 路径要求），另选端点时可用 `CHATGPT_WEB_PROFILE_PATH` 明确要求其 profile，见 [迁移说明](docs/migration.md)。
 
 ## 命令
 

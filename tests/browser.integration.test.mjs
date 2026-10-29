@@ -10,7 +10,7 @@ import { spawn } from 'node:child_process';
 import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
-import { Page, connectToUserChrome, sleep } from '../lib/browser.mjs';
+import { Page, connectToUserChrome, sleep, withProfileGuard } from '../lib/browser.mjs';
 import { ensureManagedBrowser, closeManagedBrowser, browserStatus } from '../lib/launch.mjs';
 import { fillPrompt, sendAndConfirm, waitTurnComplete, collectReply, attachFiles } from '../lib/chatgpt.mjs';
 
@@ -108,6 +108,19 @@ test(
     assert.ok(port, 'Chrome must publish a debugging port within 15 seconds');
     cdp = await connectToUserChrome({ endpoint: `http://127.0.0.1:${port}`, timeoutMs: 10_000 });
     const preserved = await cdp.createTarget('about:blank');
+    await t.test('new task tab profile is verified against the actual Chromium profile path', async () => {
+      const guarded = withProfileGuard(cdp, join(directory, 'Default'));
+      const verified = await guarded.createTarget(fixtureUrl);
+      const checkedPage = new Page(guarded, verified);
+      await checkedPage.waitForSelector('#composer', { timeoutMs: 5000 });
+      await checkedPage.close();
+      const before = (await cdp.targets()).map((target) => target.targetId).sort();
+      await assert.rejects(withProfileGuard(cdp, join(directory, 'wrong-profile')).createTarget(fixtureUrl), {
+        code: 'PROFILE_MISMATCH',
+      });
+      assert.deepEqual((await cdp.targets()).map((target) => target.targetId).sort(), before);
+      assert.ok(before.includes(preserved));
+    });
     const owned = await cdp.createTarget(fixtureUrl);
     const page = new Page(cdp, owned);
     try {

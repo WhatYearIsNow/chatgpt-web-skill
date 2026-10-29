@@ -36,7 +36,7 @@ function setup(overrides = {}) {
     connectWithApproval: async () => cdp(),
     Page: class {},
     activatePage: async () => {},
-    ensureLoggedIn: async () => true,
+    ensureNetworkAndLogin: async () => true,
     waitComposerReady: async () => {},
     assertIdleComposer: async () => {},
     readAccount: async () => 'Example',
@@ -125,7 +125,7 @@ test('direct service callers cannot bypass essential validation or silently run 
 
 test('a login page fails fast with LOGIN_REQUIRED before any composer wait', async () => {
   const h = setup({
-    ensureLoggedIn: async () => {
+    ensureNetworkAndLogin: async () => {
       throw new TaskError('LOGIN_REQUIRED', 'not logged in');
     },
   });
