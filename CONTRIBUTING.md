@@ -1,6 +1,6 @@
 # Contributing
 
-Use Node.js 22.15 or newer. No dependency installation is required.
+Use Node.js 22.15 or newer. Runtime commands need no third-party dependencies; run `npm ci --ignore-scripts` to install the locked development formatter.
 
 1. Run `npm run check` and `npm test` before submitting a change.
 2. For browser/mechanical changes, configure `CHATGPT_WEB_TEST_CHROME` and run the local browser integration too.
@@ -11,3 +11,5 @@ Use Node.js 22.15 or newer. No dependency installation is required.
 Keep browser transport, mechanical selectors, command transactions and storage independent. New send paths must keep the one-send rule and pass the returned message cursor into collection. Cleanup must target only pages created by that transaction.
 
 Run `npm pack --dry-run --json` to inspect the distributable allowlist. CI currently runs Node 22/24 on Windows with a disposable Chrome fixture. Linux/macOS jobs are deferred; a configured workflow is not evidence of a platform pass.
+
+开发环境、检查/修复命令、源码阅读路线和代码/数据回退边界见[维护流程](MAINTENANCE.md)。

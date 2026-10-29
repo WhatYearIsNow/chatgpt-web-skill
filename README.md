@@ -12,7 +12,7 @@
 
 ## 安装
 
-克隆或下载源码并在项目目录运行，不需要 `npm install`。
+克隆或下载源码并在项目目录运行；运行命令不需要第三方依赖。维护源码时用 `npm ci --ignore-scripts` 安装锁定的开发格式工具。
 也可从 [Releases](https://github.com/WhatYearIsNow/chatgpt-web-skill/releases) 下载 source.zip，按附带的 `SHA256SUMS` 核对文件；解压得到 `chatgpt-web/` 目录。
 
 ```sh
@@ -131,3 +131,5 @@ npm run test:coverage
 [测试范围与验收结果](docs/testing.md) 区分离线测试、本地浏览器测试和真实站点验证，未实测的平台不宣称通过。
 
 参阅 [重构方案](docs/refactor-plan.md)、[贡献规范](CONTRIBUTING.md)、[问题报告与隐私](SECURITY.md) 和 [迁移说明](docs/migration.md)。项目以 [MIT](LICENSE) 许可分发。
+
+开发、测试、候选构建和回退约定见[维护流程](MAINTENANCE.md)。

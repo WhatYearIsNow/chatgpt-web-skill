@@ -5,11 +5,17 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { EventEmitter } from 'node:events';
 import {
-  browserCandidates, findBrowserExecutable, managedBrowserDir, readActiveEndpoint,
-  managedLaunchArgs, ensureManagedBrowser, closeManagedBrowser,
+  browserCandidates,
+  findBrowserExecutable,
+  managedBrowserDir,
+  readActiveEndpoint,
+  managedLaunchArgs,
+  ensureManagedBrowser,
+  closeManagedBrowser,
 } from '../lib/launch.mjs';
 
-const tempDirectory = async () => mkdtemp(join(process.env.CHATGPT_WEB_TEST_TMP_DIR || tmpdir(), 'launch-test-'));
+const tempDirectory = async () =>
+  mkdtemp(join(process.env.CHATGPT_WEB_TEST_TMP_DIR || tmpdir(), 'launch-test-'));
 
 test('executable discovery covers platforms, honors explicit paths and fails actionably', async (t) => {
   const directory = await tempDirectory();
@@ -17,18 +23,36 @@ test('executable discovery covers platforms, honors explicit paths and fails act
   const explicit = join(directory, 'chrome.exe');
   await writeFile(explicit, '');
   assert.equal(await findBrowserExecutable({ explicitPath: explicit }), explicit);
-  await assert.rejects(findBrowserExecutable({ explicitPath: join(directory, 'missing.exe') }), { code: 'ERR_BROWSER_CONFIGURATION' });
+  await assert.rejects(findBrowserExecutable({ explicitPath: join(directory, 'missing.exe') }), {
+    code: 'ERR_BROWSER_CONFIGURATION',
+  });
 
-  assert.ok(browserCandidates({ PROGRAMFILES: 'C:\\P', LOCALAPPDATA: 'C:\\L' }, 'win32').some((path) => path.endsWith('chrome.exe')));
+  assert.ok(
+    browserCandidates({ PROGRAMFILES: 'C:\\P', LOCALAPPDATA: 'C:\\L' }, 'win32').some((path) =>
+      path.endsWith('chrome.exe'),
+    ),
+  );
   assert.ok(browserCandidates({}, 'darwin')[0].includes('Google Chrome.app'));
   assert.deepEqual(browserCandidates({}, 'linux'), []);
 
   const candidate = join(directory, 'chromium');
   await writeFile(candidate, '');
-  assert.equal(await findBrowserExecutable({ platform: 'win32', candidates: [join(directory, 'absent'), candidate] }), candidate);
-  assert.equal(await findBrowserExecutable({ platform: 'linux', candidates: [], which: (name) => name === 'chromium' ? '/usr/bin/chromium' : '' }), '/usr/bin/chromium');
-  await assert.rejects(findBrowserExecutable({ platform: 'linux', candidates: [], which: () => '' }),
-    (error) => error.code === 'ERR_BROWSER_CONFIGURATION' && error.message.includes('CHATGPT_WEB_CHROME'));
+  assert.equal(
+    await findBrowserExecutable({ platform: 'win32', candidates: [join(directory, 'absent'), candidate] }),
+    candidate,
+  );
+  assert.equal(
+    await findBrowserExecutable({
+      platform: 'linux',
+      candidates: [],
+      which: (name) => (name === 'chromium' ? '/usr/bin/chromium' : ''),
+    }),
+    '/usr/bin/chromium',
+  );
+  await assert.rejects(
+    findBrowserExecutable({ platform: 'linux', candidates: [], which: () => '' }),
+    (error) => error.code === 'ERR_BROWSER_CONFIGURATION' && error.message.includes('CHATGPT_WEB_CHROME'),
+  );
 });
 
 test('DevToolsActivePort parsing yields a ws endpoint or null', async (t) => {
@@ -71,9 +95,16 @@ test('a live managed browser is reused without launching', async (t) => {
   const sentinel = { close() {} };
   let spawns = 0;
   const result = await ensureManagedBrowser({
-    dataDir: directory, timeoutMs: 1000,
-    connect: async (endpoint) => { assert.equal(endpoint, 'ws://127.0.0.1:9333/devtools/browser/live'); return sentinel; },
-    spawn: () => { spawns++; return fakeChild(t); },
+    dataDir: directory,
+    timeoutMs: 1000,
+    connect: async (endpoint) => {
+      assert.equal(endpoint, 'ws://127.0.0.1:9333/devtools/browser/live');
+      return sentinel;
+    },
+    spawn: () => {
+      spawns++;
+      return fakeChild(t);
+    },
   });
   assert.equal(result.reused, true);
   assert.equal(result.client, sentinel);
@@ -91,7 +122,9 @@ test('a stale port file launches fresh: spawn, poll, connect, record connection.
   const sentinel = { close() {} };
   const child = fakeChild(t);
   const result = await ensureManagedBrowser({
-    dataDir: directory, executable, timeoutMs: 3000,
+    dataDir: directory,
+    executable,
+    timeoutMs: 3000,
     connect: async (endpoint) => {
       if (endpoint.startsWith('ws://127.0.0.1:9333')) throw new Error('stale endpoint is dead');
       assert.equal(endpoint, 'ws://127.0.0.1:9334/devtools/browser/fresh');
@@ -100,7 +133,9 @@ test('a stale port file launches fresh: spawn, poll, connect, record connection.
     spawn: (exe, args) => {
       assert.equal(exe, executable);
       assert.ok(args.some((a) => a.startsWith('--user-data-dir=')));
-      setTimeout(() => { writeFile(join(dir, 'DevToolsActivePort'), '9334\n/devtools/browser/fresh'); }, 20);
+      setTimeout(() => {
+        writeFile(join(dir, 'DevToolsActivePort'), '9334\n/devtools/browser/fresh');
+      }, 20);
       return child;
     },
   });
@@ -117,20 +152,49 @@ test('launch failures surface spawn errors, early exits and timeouts as ERR_BROW
   const executable = join(directory, 'chrome.exe');
   await writeFile(executable, '');
 
-  await assert.rejects(ensureManagedBrowser({
-    dataDir: directory, executable, timeoutMs: 500, connect: async () => { throw new Error('never'); },
-    spawn: () => fakeChild(t, (child) => process.nextTick(() => child.emit('error', Object.assign(new Error('spawn ENOENT'), { code: 'ENOENT' })))),
-  }), (error) => error.code === 'ERR_BROWSER_LAUNCH' && error.message.includes('spawn ENOENT'));
+  await assert.rejects(
+    ensureManagedBrowser({
+      dataDir: directory,
+      executable,
+      timeoutMs: 500,
+      connect: async () => {
+        throw new Error('never');
+      },
+      spawn: () =>
+        fakeChild(t, (child) =>
+          process.nextTick(() =>
+            child.emit('error', Object.assign(new Error('spawn ENOENT'), { code: 'ENOENT' })),
+          ),
+        ),
+    }),
+    (error) => error.code === 'ERR_BROWSER_LAUNCH' && error.message.includes('spawn ENOENT'),
+  );
 
-  await assert.rejects(ensureManagedBrowser({
-    dataDir: join(directory, 'b'), executable, timeoutMs: 500, connect: async () => { throw new Error('never'); },
-    spawn: () => fakeChild(t, (child) => setTimeout(() => child.emit('exit', 1), 10)),
-  }), (error) => error.code === 'ERR_BROWSER_LAUNCH' && error.message.includes('exited during startup'));
+  await assert.rejects(
+    ensureManagedBrowser({
+      dataDir: join(directory, 'b'),
+      executable,
+      timeoutMs: 500,
+      connect: async () => {
+        throw new Error('never');
+      },
+      spawn: () => fakeChild(t, (child) => setTimeout(() => child.emit('exit', 1), 10)),
+    }),
+    (error) => error.code === 'ERR_BROWSER_LAUNCH' && error.message.includes('exited during startup'),
+  );
 
-  await assert.rejects(ensureManagedBrowser({
-    dataDir: join(directory, 'c'), executable, timeoutMs: 120, connect: async () => { throw new Error('never'); },
-    spawn: () => fakeChild(t),
-  }), (error) => error.code === 'ERR_BROWSER_LAUNCH' && error.message.includes('did not become connectable'));
+  await assert.rejects(
+    ensureManagedBrowser({
+      dataDir: join(directory, 'c'),
+      executable,
+      timeoutMs: 120,
+      connect: async () => {
+        throw new Error('never');
+      },
+      spawn: () => fakeChild(t),
+    }),
+    (error) => error.code === 'ERR_BROWSER_LAUNCH' && error.message.includes('did not become connectable'),
+  );
 });
 
 test('closeManagedBrowser confirms shutdown through the port file, not the command response', async (t) => {
@@ -140,19 +204,44 @@ test('closeManagedBrowser confirms shutdown through the port file, not the comma
   await mkdir(dir, { recursive: true });
   const portFile = join(dir, 'DevToolsActivePort');
 
-  assert.deepEqual(await closeManagedBrowser({ dataDir: directory, connect: async () => { throw new Error('unused'); } }),
-    { stopped: false, endpoint: null, reason: 'not-running' });
+  assert.deepEqual(
+    await closeManagedBrowser({
+      dataDir: directory,
+      connect: async () => {
+        throw new Error('unused');
+      },
+    }),
+    { stopped: false, endpoint: null, reason: 'not-running' },
+  );
 
   await writeFile(portFile, '9333\n/devtools/browser/x');
-  assert.deepEqual(await closeManagedBrowser({ dataDir: directory, connect: async () => { throw new Error('dead'); } }),
-    { stopped: false, endpoint: 'ws://127.0.0.1:9333/devtools/browser/x', reason: 'not-reachable' });
+  assert.deepEqual(
+    await closeManagedBrowser({
+      dataDir: directory,
+      connect: async () => {
+        throw new Error('dead');
+      },
+    }),
+    { stopped: false, endpoint: 'ws://127.0.0.1:9333/devtools/browser/x', reason: 'not-reachable' },
+  );
 
   await writeFile(portFile, '9333\n/devtools/browser/x');
   const closed = await closeManagedBrowser({
-    dataDir: directory, waitMs: 2000,
-    connect: async () => ({ call: async (method) => { assert.equal(method, 'Browser.close'); await rm(dir, { recursive: true, force: true }); }, close() {} }),
+    dataDir: directory,
+    waitMs: 2000,
+    connect: async () => ({
+      call: async (method) => {
+        assert.equal(method, 'Browser.close');
+        await rm(dir, { recursive: true, force: true });
+      },
+      close() {},
+    }),
   });
-  assert.deepEqual(closed, { stopped: true, endpoint: 'ws://127.0.0.1:9333/devtools/browser/x', portFileRemoved: true });
+  assert.deepEqual(closed, {
+    stopped: true,
+    endpoint: 'ws://127.0.0.1:9333/devtools/browser/x',
+    portFileRemoved: true,
+  });
 
   // Some platforms leave the port file behind after the process exits; the
   // endpoint refusing connections is the shutdown signal instead.
@@ -160,18 +249,24 @@ test('closeManagedBrowser confirms shutdown through the port file, not the comma
   await writeFile(portFile, '9333\n/devtools/browser/x');
   let connections = 0;
   const exited = await closeManagedBrowser({
-    dataDir: directory, waitMs: 2000,
+    dataDir: directory,
+    waitMs: 2000,
     connect: async () => {
       if (++connections === 1) return { call: async () => {}, close() {} };
       throw new Error('refused after close');
     },
   });
-  assert.deepEqual(exited, { stopped: true, endpoint: 'ws://127.0.0.1:9333/devtools/browser/x', portFileRemoved: false });
+  assert.deepEqual(exited, {
+    stopped: true,
+    endpoint: 'ws://127.0.0.1:9333/devtools/browser/x',
+    portFileRemoved: false,
+  });
 
   await mkdir(dir, { recursive: true });
   await writeFile(portFile, '9333\n/devtools/browser/x');
   const stubborn = await closeManagedBrowser({
-    dataDir: directory, waitMs: 200,
+    dataDir: directory,
+    waitMs: 200,
     connect: async () => ({ call: async () => {}, close() {} }),
   });
   assert.equal(stubborn.stopped, false);

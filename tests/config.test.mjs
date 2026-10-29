@@ -6,25 +6,44 @@ import { tmpdir } from 'node:os';
 import { loadBrowserConfig } from '../lib/config.mjs';
 import { connectToUserChrome } from '../lib/browser.mjs';
 
-test('private configuration is optional, validates schema, and rejects corruption', async t => {
+test('private configuration is optional, validates schema, and rejects corruption', async (t) => {
   const directory = await mkdtemp(join(process.env.CHATGPT_WEB_TEST_TMP_DIR || tmpdir(), 'config-test-'));
   const previous = process.env.CHATGPT_WEB_DATA_DIR;
   process.env.CHATGPT_WEB_DATA_DIR = directory;
-  t.after(async () => { if (previous === undefined) delete process.env.CHATGPT_WEB_DATA_DIR; else process.env.CHATGPT_WEB_DATA_DIR = previous; await rm(directory, { recursive: true, force: true }); });
+  t.after(async () => {
+    if (previous === undefined) delete process.env.CHATGPT_WEB_DATA_DIR;
+    else process.env.CHATGPT_WEB_DATA_DIR = previous;
+    await rm(directory, { recursive: true, force: true });
+  });
   assert.deepEqual(await loadBrowserConfig(), {});
   const file = join(directory, 'config.json');
   await writeFile(file, JSON.stringify({ endpoint: 'http://127.0.0.1:9222' }));
   assert.equal((await loadBrowserConfig()).endpoint, 'http://127.0.0.1:9222');
-  await writeFile(file, JSON.stringify({ managed: false, chromePath: 'C:\\browsers\\chrome.exe', headless: true }));
+  await writeFile(
+    file,
+    JSON.stringify({ managed: false, chromePath: 'C:\\browsers\\chrome.exe', headless: true }),
+  );
   const managed = await loadBrowserConfig();
   assert.equal(managed.managed, false);
   assert.equal(managed.chromePath, 'C:\\browsers\\chrome.exe');
   assert.equal(managed.headless, true);
-  for (const value of ['{', 'null', '[]', '{"endpoint":true}', '{"endpoint":""}', '{"unexpected":"value"}',
-    '{"managed":"no"}', '{"chromePath":42}', '{"headless":"yes"}']) {
+  for (const value of [
+    '{',
+    'null',
+    '[]',
+    '{"endpoint":true}',
+    '{"endpoint":""}',
+    '{"unexpected":"value"}',
+    '{"managed":"no"}',
+    '{"chromePath":42}',
+    '{"headless":"yes"}',
+  ]) {
     await writeFile(file, value);
     await assert.rejects(loadBrowserConfig(), { code: 'CONFIG_INVALID' });
   }
   // Explicit configuration bypasses even a damaged default file.
-  await assert.rejects(connectToUserChrome({ endpoint: 'https://example.invalid', timeoutMs: 100 }), error => error.code !== 'CONFIG_INVALID');
+  await assert.rejects(
+    connectToUserChrome({ endpoint: 'https://example.invalid', timeoutMs: 100 }),
+    (error) => error.code !== 'CONFIG_INVALID',
+  );
 });
