@@ -288,6 +288,13 @@ test('dedicated dir and launch args isolate the profile with a fixed port', () =
   assert.ok(args.includes('--remote-debugging-address=127.0.0.1'));
   assert.ok(args.includes('--headless=new'));
   assert.ok(!dedicatedLaunchArgs({ profileDir: 'd', port: 9230 }).includes('--headless=new'));
+  // proxyServer: isolated browser routes through a local proxy without OS proxy
+  assert.ok(
+    dedicatedLaunchArgs({ profileDir: 'd', port: 9230, proxyServer: 'http://127.0.0.1:7897' }).includes(
+      '--proxy-server=http://127.0.0.1:7897',
+    ),
+  );
+  assert.ok(!dedicatedLaunchArgs({ profileDir: 'd', port: 9230 }).some((a) => a.startsWith('--proxy-server')));
   // minimized real window starts off-screen; headless does not add window args
   const minArgs = dedicatedLaunchArgs({ profileDir: 'd', port: 9230, minimized: true });
   assert.ok(minArgs.includes('--window-position=-32000,-32000'));
