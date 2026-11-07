@@ -294,7 +294,9 @@ test('dedicated dir and launch args isolate the profile with a fixed port', () =
       '--proxy-server=http://127.0.0.1:7897',
     ),
   );
-  assert.ok(!dedicatedLaunchArgs({ profileDir: 'd', port: 9230 }).some((a) => a.startsWith('--proxy-server')));
+  assert.ok(
+    !dedicatedLaunchArgs({ profileDir: 'd', port: 9230 }).some((a) => a.startsWith('--proxy-server')),
+  );
   // minimized real window starts off-screen; headless does not add window args
   const minArgs = dedicatedLaunchArgs({ profileDir: 'd', port: 9230, minimized: true });
   assert.ok(minArgs.includes('--window-position=-32000,-32000'));
