@@ -40,6 +40,14 @@ Mismatch/unavailable evidence closes only that owned tab and fails before site
 navigation. Explicit endpoint/adapter arguments replace the persisted policy
 as a whole, including its pin. No existing profile directory is opened or copied.
 
+Between the adapter and managed launching, config.json `dedicated: true` selects the
+**dedicated** mode: a persistent isolated profile under `<data dir>/dedicated` with a
+fixed local debug port (`dedicatedPort`, for example 9230) and an optional minimized
+launch (`dedicatedMinimized`), which survives restarts, keeps its interactive login,
+and passes site interstitials while minimized. An explicit endpoint or adapter takes
+precedence over dedicated; dedicated takes precedence over managed launching, which
+only applies with neither configured and `managed` not disabled.
+
 Third, with neither configured — and managed launching not disabled (`CHATGPT_WEB_MANAGED=0` or config.json `"managed": false`) — `lib/launch.mjs` starts a **managed browser**: a locally discovered Chromium-family executable (env `CHATGPT_WEB_CHROME` or config.json `chromePath` overrides the platform candidate list) running with a dedicated fresh user-data-dir at `<data dir>/browser` and an ephemeral loopback debug port (`--remote-debugging-port=0`). An already-running managed instance is detected by connecting to its published endpoint, which also discards stale port files. The launched process is detached and outlives the CLI; its first interactive ChatGPT login persists in the managed profile and is reused by every later run, so no login repeats. An explicit endpoint or adapter is always preferred; when configured but unreachable it produces a connection error — a second browser is never launched as a fallback. The user's default browser, its profiles and its DevToolsActivePort file are never read, copied or modified; no OS approval dialog is clicked and no password is handled. `browser status|start|login|stop` exposes this lifecycle read-only or under the shared browser mutex. `connectWithApproval()` remains a compatibility name; the default implementation does not approve anything.
 Protocol reference: [Chrome DevTools Protocol](https://chromedevtools.github.io/devtools-protocol/).
 
