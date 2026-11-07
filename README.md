@@ -90,7 +90,7 @@ node scripts/chatgpt-web.mjs account --google --keep-open
 | `--prompt` / `--prompt-file` | 二选一，不能为空 |
 | `--out` | 文本可选；review/followup 默认生成文件；image 必填 |
 | `--timeout` | 回复完成与正文稳定回收共用的等待秒数（账号命令用于切号流程），不包含前置连接、上传或锁等待 |
-| `--lock-timeout` | 等待本机任务互斥锁的秒数，默认 600 |
+| `--lock-timeout` | 等待本机任务互斥锁的秒数，默认 600（image 生图仅在连接段持锁，发送/等图不占锁） |
 | `--dry-run` | 准备真实网页但不发送；附件/参考图会上传；account 不切号 |
 | `--keep-open` / `--keep-tab` | 保留本任务标签页，便于检查与人工接手 |
 | `--account` | 显示名片段检查；quota 的 account 使用事件记录里的完整标签 |
