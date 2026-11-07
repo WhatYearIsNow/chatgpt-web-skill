@@ -367,3 +367,42 @@ test('image result uses the final durable URL returned by collection instead of 
   assert.equal(result.outputs.length, 1);
   assert.ok(!result.warnings.some((w) => w.code === 'CONVERSATION_TRANSIENT'));
 });
+
+test('image holds the machine lock only across the connect phase', async () => {
+  const h = setup();
+  const result = await runTask({ ...h.options, command: 'image', out: 'image.png' }, h.d);
+  assert.equal(result.ok, true);
+  assert.deepEqual(
+    h.events.filter((e) => ['lock', 'create', 'release', 'send', 'close-tab'].includes(e)),
+    ['lock', 'release', 'create', 'send', 'close-tab'],
+  );
+});
+
+test('image candidates re-acquire the connect lock per candidate', async () => {
+  const h = setup();
+  const imageRun = await runTask({ ...h.options, command: 'image', candidates: 2, out: 'image.webp' }, h.d);
+  assert.equal(imageRun.outputs.length, 2);
+  assert.deepEqual(
+    h.events.filter((e) => ['lock', 'create', 'release', 'send', 'close-tab'].includes(e)),
+    ['lock', 'release', 'create', 'send', 'close-tab', 'lock', 'release', 'create', 'send', 'close-tab'],
+  );
+});
+
+test('account keeps the whole-run lock from acquisition to final release', async () => {
+  const h = setup();
+  const result = await runTask(
+    {
+      ...h.options,
+      command: 'account',
+      dryRun: true,
+      email: 'example@example.invalid',
+      provider: 'google',
+    },
+    h.d,
+  );
+  assert.equal(result.ok, true);
+  assert.deepEqual(
+    h.events.filter((e) => ['lock', 'create', 'close-tab', 'release'].includes(e)),
+    ['lock', 'create', 'close-tab', 'release'],
+  );
+});
