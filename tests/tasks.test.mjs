@@ -380,17 +380,11 @@ test('image holds the machine lock only across the connect phase', async () => {
 
 test('image candidates re-acquire the connect lock per candidate', async () => {
   const h = setup();
-  const imageRun = await runTask(
-    { ...h.options, command: 'image', candidates: 2, out: 'image.webp' },
-    h.d,
-  );
+  const imageRun = await runTask({ ...h.options, command: 'image', candidates: 2, out: 'image.webp' }, h.d);
   assert.equal(imageRun.outputs.length, 2);
   assert.deepEqual(
     h.events.filter((e) => ['lock', 'create', 'release', 'send', 'close-tab'].includes(e)),
-    [
-      'lock', 'release', 'create', 'send', 'close-tab',
-      'lock', 'release', 'create', 'send', 'close-tab',
-    ],
+    ['lock', 'release', 'create', 'send', 'close-tab', 'lock', 'release', 'create', 'send', 'close-tab'],
   );
 });
 
