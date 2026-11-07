@@ -2,10 +2,12 @@
 name: chatgpt-web
 description: >
   Delegate text questions, attachment reviews, follow-up messages, and image generation
-  to an existing ChatGPT browser session; inspect local usage evidence, switch a
-  selected email SSO account, or use an existing Google session. Use for ChatGPT website automation and reusable
-  chatgpt.com scripts. Business-specific review, homework, and publication decisions
-  remain with the calling workflow. This is browser automation, not the OpenAI API.
+  to an existing ChatGPT browser session — the agent's dedicated ChatGPT channel: a
+  second brain for independent review, prompt production, and decision support, and a
+  capable assistant for image tasks. Also inspects local usage evidence, switches a
+  selected email SSO account, or uses an existing Google session. Business-specific
+  review and publication decisions remain with the calling workflow. This is browser
+  automation, not the OpenAI API.
 ---
 
 # chatgpt-web
