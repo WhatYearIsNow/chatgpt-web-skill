@@ -49,6 +49,13 @@ node scripts/chatgpt-web.mjs browser stop     # 只关闭托管实例；显式�
 
 首跑推荐顺序：`browser start`（或直接跑任意命令）→ 在弹出的窗口登录一次（或用 `browser login` 等待）→ 之后全自动。机器上没有任何 Chromium 系浏览器时安装一个，或用 `CHATGPT_WEB_CHROME` 指向现有可执行文件。
 
+### 本机代理（dedicated 实例）
+
+隔离浏览器需要走本机代理（如 SakuraCat/Clash 类客户端的本地混合端口）时，不必开启系统代理：在私有数据目录的 `config.json` 加 `"proxyServer": "http://127.0.0.1:7897"`（或设环境变量 `CHATGPT_WEB_PROXY`），dedicated 实例启动时会带上 `--proxy-server`。注意两点：
+
+- **Reuse-first**：9230 端口上已有实例会直接复用，代理参数只在**新启动**时生效——改配置后需 `browser stop`（或结束旧的 dedicated 进程）再启动一次。
+- **诚实失败**：代理客户端没运行时页面会以代理连接错误失败（不会静默直连），按报错检查代理客户端即可。
+
 ## 高级：使用已有浏览器端点
 
 不想用托管浏览器、要复用其他已登录的浏览器时，显式配置端点——**显式端点永远优先，配置了端点就绝不会启动托管浏览器**：

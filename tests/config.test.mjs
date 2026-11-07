@@ -76,6 +76,14 @@ test('saved profile pins are shared by all commands and explicit connections rep
   const policy = await resolveBrowserOptions();
   assert.equal(policy.mode, 'adapter');
   assert.equal(policy.profilePath, profilePath);
+  // proxyServer via env wins over config file
+  process.env.CHATGPT_WEB_PROXY = 'http://127.0.0.1:7897';
+  try {
+    const proxied = await resolveBrowserOptions();
+    assert.equal(proxied.proxyServer, 'http://127.0.0.1:7897');
+  } finally {
+    delete process.env.CHATGPT_WEB_PROXY;
+  }
   const explicit = await resolveBrowserOptions({ endpoint: 'ws://127.0.0.1:9999' });
   assert.equal(explicit.mode, 'endpoint');
   assert.equal(
