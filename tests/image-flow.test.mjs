@@ -22,9 +22,11 @@ function page({
   galleryOnly = false,
   galleryBeforeUser = false,
   complete = true,
+  recoverAfterReload = false,
 } = {}) {
   let fetches = 0,
     states = 0;
+  let reloaded = false;
   const gallery = {
     querySelectorAll: () => [
       { naturalWidth: 500, alt: 'Generated image 1', src: 'http://fixture.invalid/image' },
@@ -47,7 +49,10 @@ function page({
   };
   const document = {
     querySelectorAll: (selector) => {
-      if (selector === SEL.userMsg) return hydrate && states++ === 0 ? [] : [user];
+      if (selector === SEL.userMsg) {
+        if (recoverAfterReload && !reloaded) return [];
+        return hydrate && states++ === 0 ? [] : [user];
+      }
       if (selector === SEL.assistant) return galleryOnly ? [] : [assistant];
       if (selector === SEL.turn) return [turn];
       if (selector === 'button') return [];
@@ -59,7 +64,12 @@ function page({
     evaluate: async (expression) =>
       vm.runInNewContext(expression, {
         document,
-        location: { href: 'https://chatgpt.com/c/fixture' },
+        location: {
+          href: 'https://chatgpt.com/c/fixture',
+          reload: () => {
+            reloaded = true;
+          },
+        },
         AbortSignal,
         Uint8Array,
         btoa: (value) => Buffer.from(value, 'binary').toString('base64'),
@@ -106,8 +116,24 @@ for (const [name, config] of [
 test('image from an older assistant is never downloaded', async (t) => {
   const output = await fixture(t),
     p = page({ oldImage: true });
-  await assert.rejects(waitAndSaveImage(p, output, 20, { replyTo }), { code: 'IMAGE_TIMEOUT' });
+  await assert.rejects(waitAndSaveImage(p, output, 20, { replyTo, recoveryMs: 0 }), {
+    code: 'IMAGE_TIMEOUT',
+  });
   assert.equal(p.fetches(), 0);
+});
+test('deadline sweep reloads the conversation and recovers a finished image', async (t) => {
+  const output = await fixture(t),
+    p = page({ recoverAfterReload: true });
+  await waitAndSaveImage(p, output, 30, { replyTo, recoveryMs: 800 });
+  assert.deepEqual(await readFile(output), png);
+  assert.equal(p.fetches(), 1);
+});
+test('image timeout fires only after the recovery grace window', async (t) => {
+  const output = await fixture(t),
+    p = page({ complete: false });
+  await assert.rejects(waitAndSaveImage(p, output, 30, { replyTo, recoveryMs: 200 }), {
+    code: 'IMAGE_TIMEOUT',
+  });
 });
 test('explicit current quota denial retains the raw reset-time evidence', async (t) => {
   const output = await fixture(t);
@@ -132,7 +158,9 @@ for (const config of [
   test(`image-only gallery rejects stale or unfinished content: ${JSON.stringify(config)}`, async (t) => {
     const output = await fixture(t),
       p = page(config);
-    await assert.rejects(waitAndSaveImage(p, output, 20, { replyTo }), { code: 'IMAGE_TIMEOUT' });
+    await assert.rejects(waitAndSaveImage(p, output, 20, { replyTo, recoveryMs: 0 }), {
+      code: 'IMAGE_TIMEOUT',
+    });
     assert.equal(p.fetches(), 0);
   });
 }
