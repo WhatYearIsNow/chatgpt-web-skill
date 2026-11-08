@@ -418,6 +418,7 @@ test('proxy 自动拉起：端口不通+配置命令 → 执行拉起并等待�
   const launched = [];
   const launchProxyImpl = {
     probeTcpPort,
+    probeHttp: async () => true, // HTTP 层固定就绪：隔离 CI 环境的真实 7897 探测
     spawnProxy: (cmd) => launched.push(cmd),
   };
   const discover = async () => ({ call: async () => null });
@@ -442,6 +443,7 @@ test('proxy 自动拉起：端口已通 → 不执行拉起', async () => {
       probeCalls += 1;
       return true;
     },
+    probeHttp: async () => true,
     spawnProxy: () => {
       throw new Error('端口已通不应拉起');
     },
