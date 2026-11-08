@@ -15,6 +15,7 @@ import {
   dedicatedBrowserDir,
   dedicatedLaunchArgs,
   ensureDedicatedBrowser,
+  parseProxyEndpoint,
   dedicatedStatus,
   minimizeBrowserWindows,
   DEFAULT_DEDICATED_PORT,
@@ -405,4 +406,85 @@ test('dedicated status reports running only when the fixed port answers', async 
   // default discovery path: no browser listening -> not running
   assert.equal(up.running, false);
   assert.equal(up.port, 9232);
+});
+
+test('proxy 自动拉起：端口不通+配置命令 → 执行拉起并等待就绪', async () => {
+  // 注入：probe 前两次不通、第三次就绪；spawnProxy 记录命令；discover 命中固定端口
+  let probeCalls = 0;
+  const probeTcpPort = async () => {
+    probeCalls += 1;
+    return probeCalls >= 3;
+  };
+  const launched = [];
+  const launchProxyImpl = {
+    probeTcpPort,
+    spawnProxy: (cmd) => launched.push(cmd),
+  };
+  const discover = async () => ({ call: async () => null });
+  const res = await ensureDedicatedBrowser({
+    dataDir: 'd-proxy-launch',
+    port: 9230,
+    proxyServer: 'http://127.0.0.1:7897',
+    proxyLaunchCommand: 'C:\Program Files\SakuraCat\SakuraCat.exe',
+    proxyReadyTimeoutMs: 5000,
+    discover,
+    launchProxyImpl,
+  });
+  assert.ok(launched.includes('C:\Program Files\SakuraCat\SakuraCat.exe'), '应执行拉起命令');
+  assert.ok(probeCalls >= 3, `应轮询探测至就绪（实际 ${probeCalls} 次）`);
+  // reused 由 mock discover 决定（恒成功→true）；本用例验证的是拉起链路本身
+});
+
+test('proxy 自动拉起：端口已通 → 不执行拉起', async () => {
+  let probeCalls = 0;
+  const launchProxyImpl = {
+    probeTcpPort: async () => {
+      probeCalls += 1;
+      return true;
+    },
+    spawnProxy: () => {
+      throw new Error('端口已通不应拉起');
+    },
+  };
+  const discover = async () => ({ call: async () => null });
+  const res = await ensureDedicatedBrowser({
+    dataDir: 'd-proxy-live',
+    port: 9230,
+    proxyServer: 'http://127.0.0.1:7897',
+    proxyLaunchCommand: 'whatever.exe',
+    discover,
+    launchProxyImpl,
+  });
+  assert.equal(probeCalls, 1);
+  assert.equal(res.reused, true);
+});
+
+test('proxy 自动拉起：拉起后仍超时 → ERR_PROXY_LAUNCH', async () => {
+  const launchProxyImpl = {
+    probeTcpPort: async () => false,
+    spawnProxy: () => {},
+  };
+  await assert.rejects(
+    () =>
+      ensureDedicatedBrowser({
+        dataDir: 'd-proxy-dead',
+        port: 9230,
+        proxyServer: 'http://127.0.0.1:7897',
+        proxyLaunchCommand: 'SakuraCat.exe',
+        proxyReadyTimeoutMs: 400,
+        discover: async () => ({ call: async () => null }),
+        launchProxyImpl,
+      }),
+    (e) => e.code === 'ERR_PROXY_LAUNCH' && /did not become reachable/.test(e.message),
+  );
+});
+
+test('parseProxyEndpoint：仅接受本机 http(s) 代理 URL', () => {
+  assert.deepEqual(parseProxyEndpoint('http://127.0.0.1:7897'), { host: '127.0.0.1', port: 7897 });
+  assert.deepEqual(parseProxyEndpoint('http://localhost:7897'), { host: '127.0.0.1', port: 7897 });
+  assert.equal(parseProxyEndpoint('http://proxy.example:7897'), null, '远端不允许');
+  assert.equal(parseProxyEndpoint('socks5://127.0.0.1:7897'), null, '仅 http(s)');
+  assert.equal(parseProxyEndpoint('http://127.0.0.1'), null, '缺端口');
+  assert.equal(parseProxyEndpoint('not-a-url'), null);
+  assert.equal(parseProxyEndpoint(null), null);
 });
