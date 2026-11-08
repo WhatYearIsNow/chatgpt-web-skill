@@ -418,6 +418,7 @@ test('proxy 自动拉起：端口不通+配置命令 → 执行拉起并等待�
   const launched = [];
   const launchProxyImpl = {
     probeTcpPort,
+    probeHttp: async () => true, // HTTP 层固定就绪：隔离 CI 环境的真实 7897 探测
     spawnProxy: (cmd) => launched.push(cmd),
   };
   const discover = async () => ({ call: async () => null });
@@ -442,6 +443,7 @@ test('proxy 自动拉起：端口已通 → 不执行拉起', async () => {
       probeCalls += 1;
       return true;
     },
+    probeHttp: async () => true,
     spawnProxy: () => {
       throw new Error('端口已通不应拉起');
     },
@@ -473,9 +475,12 @@ test('proxy 自动拉起：拉起后仍超时 → ERR_PROXY_LAUNCH', async () =>
         proxyLaunchCommand: 'SakuraCat.exe',
         proxyReadyTimeoutMs: 400,
         discover: async () => ({ call: async () => null }),
-        launchProxyImpl,
+        launchProxyImpl: {
+          ...launchProxyImpl,
+          probeHttp: async () => false, // HTTP 层恒失败：本机 7897 可能真活着，须隔离真实探针
+        },
       }),
-    (e) => e.code === 'ERR_PROXY_LAUNCH' && /did not become reachable/.test(e.message),
+    (e) => e.code === 'ERR_PROXY_LAUNCH' && /PROXY_PORT_DEAD/.test(e.message),
   );
 });
 
