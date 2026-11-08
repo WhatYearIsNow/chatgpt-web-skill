@@ -131,6 +131,10 @@ done
 
 stdout 回执逐张存档便于核对。示例端点是本机中继的 `ws://` 形态，按实际端点调整；`http://` 形态要求对端提供 `/json/version`。`--candidates N` 在一次命令内生成 N 张独立候选，不需要外层循环。
 
+## 提示词资产库（prompts/）
+
+外审/提示词优化/生图三场景的提示词模板与规范，抽象自 2026-11-07/08 shouxie-mcp 八轮真实外审并吸收社区主流经验（G-Research LLM 代码审查模式、OpenAI/Anthropic 官方指南、LLM-as-judge 与 meta-prompting 实践）。期一交付外审族：`prompts/review/`（初次审计/回归复审/证据核验）+ `prompts/common/`（输出契约/证据标准/轮次协议）。使用指南与设计依据见 [prompts/README.md](prompts/README.md)。
+
 ## 数据、测试与贡献
 
 运行记录默认在平台用户数据目录，可用 `CHATGPT_WEB_DATA_DIR` 覆盖。没有账号清单、cookie、密码或硬编码用量基线随包分发。
