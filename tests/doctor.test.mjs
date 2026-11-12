@@ -242,3 +242,27 @@ test('doctor image contract reports unavailable when the probe throws', async ()
   assert.equal(result.ok, false);
   assert.equal(result.reason, 'image-contract-unavailable');
 });
+
+test('doctor image contract retries an all-zero probe once before concluding empty', async () => {
+  const client = mockClient();
+  let calls = 0;
+  const result = await doctor(
+    { imageContract: 'https://chat.example.invalid/c/00000000-0000-0000-0000-000000000000' },
+    {
+      ...baseOverrides,
+      resolveBrowserOptions: async () => ({ mode: 'endpoint', endpoint: 'http://127.0.0.1:9222' }),
+      connectToUserChrome: async () => client,
+      loginState: async () => 'ready',
+      imageContractProbe: async () =>
+        ++calls === 1 ? { scopeCount: 0, docCount: 0 } : { scopeCount: 1, docCount: 1 },
+      sleep: async () => {},
+      Page: class {
+        async close() {}
+        async evaluate() {}
+        async waitForFunction() {}
+      },
+    },
+  );
+  assert.equal(result.ok, true);
+  assert.equal(calls, 2, 'probe should run exactly twice');
+});
