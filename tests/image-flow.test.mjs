@@ -23,18 +23,30 @@ function page({
   galleryBeforeUser = false,
   complete = true,
   recoverAfterReload = false,
+  newUi = false,
+  undecoded = false,
 } = {}) {
   let fetches = 0,
     states = 0;
   let reloaded = false;
   const gallery = {
     querySelectorAll: () => [
-      { naturalWidth: 500, alt: 'Generated image 1', src: 'http://fixture.invalid/image' },
+      {
+        naturalWidth: undecoded ? 0 : 500,
+        alt: 'Generated image 1',
+        src: 'http://fixture.invalid/image',
+      },
     ],
   };
   const turn = {
     getAttribute: () => (complete ? 'complete' : 'streaming'),
-    querySelectorAll: () => (galleryOnly ? [gallery] : []),
+    querySelectorAll: (selector) =>
+      selector === '[data-testid="generated-image-gallery"]' ? (galleryOnly || newUi ? [gallery] : []) : [],
+  };
+  const assistantImg = {
+    naturalWidth: 500,
+    alt: 'Generated image',
+    src: 'http://fixture.invalid/image',
   };
   const user = {
     getAttribute: () => replyTo.userKey,
@@ -43,9 +55,7 @@ function page({
   };
   const assistant = {
     innerText: tail,
-    querySelectorAll: () => [
-      { naturalWidth: 500, alt: 'Generated image', src: 'http://fixture.invalid/image' },
-    ],
+    querySelectorAll: (selector) => (selector === 'img' ? (galleryOnly || newUi ? [] : [assistantImg]) : []),
   };
   const document = {
     querySelectorAll: (selector) => {
@@ -73,6 +83,8 @@ function page({
         AbortSignal,
         Uint8Array,
         btoa: (value) => Buffer.from(value, 'binary').toString('base64'),
+        setTimeout,
+        clearTimeout,
         fetch: async () => {
           fetches++;
           return new Response(png, {
@@ -150,6 +162,40 @@ test('image-only gallery in the current completed turn is downloaded without an 
   await waitAndSaveImage(p, output, 1000, { replyTo });
   assert.deepEqual(await readFile(output), png);
   assert.equal(p.fetches(), 1);
+});
+
+test('gallery image outside the assistant marker is collected (2026-11-12 UI drift)', async (t) => {
+  const output = await fixture(t),
+    p = page({ newUi: true });
+  await waitAndSaveImage(p, output, 1000, { replyTo });
+  assert.deepEqual(await readFile(output), png);
+  assert.equal(p.fetches(), 1);
+});
+
+test('undecoded gallery image still downloads via src fetch (minimized-window fallback)', async (t) => {
+  const output = await fixture(t),
+    p = page({ newUi: true, undecoded: true });
+  await waitAndSaveImage(p, output, 1000, { replyTo });
+  assert.deepEqual(await readFile(output), png);
+  assert.equal(p.fetches(), 1);
+});
+
+test('gallery outside the assistant marker rejects a stale-position gallery', async (t) => {
+  const output = await fixture(t),
+    p = page({ newUi: true, galleryBeforeUser: true });
+  await assert.rejects(waitAndSaveImage(p, output, 20, { replyTo, recoveryMs: 0 }), {
+    code: 'IMAGE_TIMEOUT',
+  });
+  assert.equal(p.fetches(), 0);
+});
+
+test('gallery outside the assistant marker still waits for turn completion', async (t) => {
+  const output = await fixture(t),
+    p = page({ newUi: true, complete: false });
+  await assert.rejects(waitAndSaveImage(p, output, 20, { replyTo, recoveryMs: 0 }), {
+    code: 'IMAGE_TIMEOUT',
+  });
+  assert.equal(p.fetches(), 0);
 });
 for (const config of [
   { galleryOnly: true, galleryBeforeUser: true },
