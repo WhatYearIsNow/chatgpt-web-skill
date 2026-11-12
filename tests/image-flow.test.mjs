@@ -25,6 +25,8 @@ function page({
   recoverAfterReload = false,
   newUi = false,
   undecoded = false,
+  fallbackOnly = false,
+  fallbackStale = false,
 } = {}) {
   let fetches = 0,
     states = 0;
@@ -46,16 +48,24 @@ function page({
   const assistantImg = {
     naturalWidth: 500,
     alt: 'Generated image',
+    src: 'conversation-internal',
+  };
+  const docImg = {
+    naturalWidth: 500,
+    alt: 'Generated image',
     src: 'http://fixture.invalid/image',
   };
+  const docImgs = fallbackOnly || fallbackStale ? [docImg] : [];
   const user = {
     getAttribute: () => replyTo.userKey,
     closest: () => turn,
-    compareDocumentPosition: (el) => (oldImage || (el === gallery && galleryBeforeUser) ? 2 : 4),
+    compareDocumentPosition: (el) =>
+      oldImage || (el === gallery && galleryBeforeUser) || (fallbackStale && el === docImg) ? 2 : 4,
   };
   const assistant = {
     innerText: tail,
-    querySelectorAll: (selector) => (selector === 'img' ? (galleryOnly || newUi ? [] : [assistantImg]) : []),
+    querySelectorAll: (selector) =>
+      selector === 'img' ? (galleryOnly || newUi || fallbackOnly ? [] : [assistantImg]) : [],
   };
   const document = {
     querySelectorAll: (selector) => {
@@ -66,6 +76,7 @@ function page({
       if (selector === SEL.assistant) return galleryOnly ? [] : [assistant];
       if (selector === SEL.turn) return [turn];
       if (selector === 'button') return [];
+      if (selector === 'img') return docImgs;
       throw new Error(`Unknown selector ${selector}`);
     },
   };
@@ -210,3 +221,20 @@ for (const config of [
     assert.equal(p.fetches(), 0);
   });
 }
+
+test('fallback sweep saves a completed image the detection scope cannot see', async (t) => {
+  const output = await fixture(t),
+    p = page({ fallbackOnly: true });
+  await waitAndSaveImage(p, output, 20, { replyTo, recoveryMs: 0 });
+  assert.deepEqual(await readFile(output), png);
+  assert.equal(p.fetches(), 1);
+});
+
+test('fallback sweep never adopts an image positioned before the current user message', async (t) => {
+  const output = await fixture(t),
+    p = page({ fallbackOnly: true, fallbackStale: true });
+  await assert.rejects(waitAndSaveImage(p, output, 20, { replyTo, recoveryMs: 0 }), {
+    code: 'IMAGE_TIMEOUT',
+  });
+  assert.equal(p.fetches(), 0);
+});

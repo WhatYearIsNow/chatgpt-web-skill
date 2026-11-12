@@ -137,3 +137,70 @@ test('doctor reports network-unreachable from the chrome-error page', async () =
   assert.equal(result.reason, 'network-unreachable');
   assert.equal(result.network.kind, 'connection');
 });
+
+test('doctor image contract passes on a healthy conversation', async () => {
+  const client = mockClient();
+  const result = await doctor(
+    { imageContract: 'https://chatgpt.com/c/6af493ae-e3cc-83e9-9618-5d0b0305e310' },
+    {
+      ...baseOverrides,
+      resolveBrowserOptions: async () => ({ mode: 'endpoint', endpoint: 'http://127.0.0.1:9222' }),
+      connectToUserChrome: async () => client,
+      loginState: async () => 'ready',
+      imageContractProbe: async () => ({ scopeCount: 1, docCount: 1 }),
+      Page: class {
+        async close() {}
+        async evaluate() {}
+        async waitForFunction() {}
+      },
+    },
+  );
+  assert.equal(result.ok, true);
+  assert.equal(result.imageContract.ok, true);
+  assert.equal(result.imageContract.drift, false);
+});
+
+test('doctor image contract flags drift and flips ok to false with an actionable reason', async () => {
+  const client = mockClient();
+  const result = await doctor(
+    { imageContract: 'https://chatgpt.com/c/6af493ae-e3cc-83e9-9618-5d0b0305e310' },
+    {
+      ...baseOverrides,
+      resolveBrowserOptions: async () => ({ mode: 'endpoint', endpoint: 'http://127.0.0.1:9222' }),
+      connectToUserChrome: async () => client,
+      loginState: async () => 'ready',
+      imageContractProbe: async () => ({ scopeCount: 0, docCount: 2 }),
+      Page: class {
+        async close() {}
+        async evaluate() {}
+        async waitForFunction() {}
+      },
+    },
+  );
+  assert.equal(result.ok, false);
+  assert.equal(result.imageContract.drift, true);
+  assert.equal(result.reason, 'image-contract-drift');
+});
+
+test('doctor image contract reports unavailable when the probe throws', async () => {
+  const client = mockClient();
+  const result = await doctor(
+    { imageContract: 'https://chatgpt.com/c/6af493ae-e3cc-83e9-9618-5d0b0305e310' },
+    {
+      ...baseOverrides,
+      resolveBrowserOptions: async () => ({ mode: 'endpoint', endpoint: 'http://127.0.0.1:9222' }),
+      connectToUserChrome: async () => client,
+      loginState: async () => 'ready',
+      imageContractProbe: async () => {
+        throw new Error('probe exploded');
+      },
+      Page: class {
+        async close() {}
+        async evaluate() {}
+        async waitForFunction() {}
+      },
+    },
+  );
+  assert.equal(result.ok, false);
+  assert.equal(result.reason, 'image-contract-unavailable');
+});
