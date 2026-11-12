@@ -138,6 +138,44 @@ test('doctor reports network-unreachable from the chrome-error page', async () =
   assert.equal(result.network.kind, 'connection');
 });
 
+test('doctor image contract works through the default probe (no injection)', async () => {
+  const client = mockClient();
+  const result = await doctor(
+    { imageContract: 'https://chat.example.invalid/c/00000000-0000-0000-0000-000000000000' },
+    {
+      ...baseOverrides,
+      resolveBrowserOptions: async () => ({ mode: 'endpoint', endpoint: 'http://127.0.0.1:9222' }),
+      connectToUserChrome: async () => client,
+      loginState: async () => 'ready',
+      // 不注入 imageContractProbe：走默认接线（回归 2026-11-12 缺省漏接）。
+      Page: class {
+        async close() {}
+        async evaluate(expression) {
+          const vm = await import('node:vm');
+          const image = { src: 'http://fixture.invalid/i', alt: 'Generated image 1' };
+          const assistant = { querySelectorAll: () => [image] };
+          const documentMock = {
+            querySelectorAll: (selector) => {
+              if (selector === '[data-chatgpt-search-unit-key$=":user"]')
+                return [{ getAttribute: () => 'u:user' }];
+              if (selector === '[data-chatgpt-search-unit-key$=":assistant"]') return [assistant];
+              if (selector === '[data-talvt-turn-state]') return [{ querySelectorAll: () => [] }];
+              if (selector === 'img') return [image];
+              throw new Error(`Unknown selector ${selector}`);
+            },
+          };
+          return vm.runInNewContext(expression, { document: documentMock, location: { pathname: '/c/x' } });
+        }
+        async waitForFunction() {}
+      },
+    },
+  );
+  assert.equal(result.ok, true);
+  assert.equal(result.imageContract.ok, true);
+  assert.equal(result.imageContract.scopeCount, 1);
+  assert.equal(result.imageContract.docCount, 1);
+});
+
 test('doctor image contract passes on a healthy conversation', async () => {
   const client = mockClient();
   const result = await doctor(
