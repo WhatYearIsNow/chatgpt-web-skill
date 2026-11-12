@@ -141,7 +141,7 @@ test('doctor reports network-unreachable from the chrome-error page', async () =
 test('doctor image contract passes on a healthy conversation', async () => {
   const client = mockClient();
   const result = await doctor(
-    { imageContract: 'https://chatgpt.com/c/6af493ae-e3cc-83e9-9618-5d0b0305e310' },
+    { imageContract: 'https://chat.example.invalid/c/00000000-0000-0000-0000-000000000000' },
     {
       ...baseOverrides,
       resolveBrowserOptions: async () => ({ mode: 'endpoint', endpoint: 'http://127.0.0.1:9222' }),
@@ -163,7 +163,7 @@ test('doctor image contract passes on a healthy conversation', async () => {
 test('doctor image contract flags drift and flips ok to false with an actionable reason', async () => {
   const client = mockClient();
   const result = await doctor(
-    { imageContract: 'https://chatgpt.com/c/6af493ae-e3cc-83e9-9618-5d0b0305e310' },
+    { imageContract: 'https://chat.example.invalid/c/00000000-0000-0000-0000-000000000000' },
     {
       ...baseOverrides,
       resolveBrowserOptions: async () => ({ mode: 'endpoint', endpoint: 'http://127.0.0.1:9222' }),
@@ -185,7 +185,7 @@ test('doctor image contract flags drift and flips ok to false with an actionable
 test('doctor image contract reports unavailable when the probe throws', async () => {
   const client = mockClient();
   const result = await doctor(
-    { imageContract: 'https://chatgpt.com/c/6af493ae-e3cc-83e9-9618-5d0b0305e310' },
+    { imageContract: 'https://chat.example.invalid/c/00000000-0000-0000-0000-000000000000' },
     {
       ...baseOverrides,
       resolveBrowserOptions: async () => ({ mode: 'endpoint', endpoint: 'http://127.0.0.1:9222' }),
