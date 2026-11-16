@@ -86,6 +86,28 @@ test('doctor launches the managed browser and verifies login', async () => {
   assert.equal(result.mode, 'managed');
 });
 
+test('doctor forwards dedicated browser proxy settings', async () => {
+  const client = mockClient();
+  const proxy = {
+    proxyServer: 'http://127.0.0.1:7897',
+    proxyLaunchCommand: 'proxy-client.exe',
+    proxyProbeUrl: 'https://example.invalid/probe',
+  };
+  const result = await doctor(
+    {},
+    {
+      ...baseOverrides,
+      resolveBrowserOptions: async () => ({ mode: 'dedicated', dedicatedPort: 9230, ...proxy }),
+      ensureDedicatedBrowser: async (options) => {
+        for (const [key, value] of Object.entries(proxy)) assert.equal(options[key], value);
+        return { client };
+      },
+      loginState: async () => 'ready',
+    },
+  );
+  assert.equal(result.ok, true);
+});
+
 const navigateClient = (navigateResult) => {
   const closed = { value: false };
   return {

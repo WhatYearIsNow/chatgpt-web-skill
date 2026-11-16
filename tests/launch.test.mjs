@@ -428,6 +428,7 @@ test('proxy 自动拉起：端口不通+配置命令 → 执行拉起并等待�
     proxyServer: 'http://127.0.0.1:7897',
     proxyLaunchCommand: 'C:\Program Files\SakuraCat\SakuraCat.exe',
     proxyReadyTimeoutMs: 5000,
+    readCommandLineImpl: () => null,
     discover,
     launchProxyImpl,
   });
@@ -454,6 +455,7 @@ test('proxy 自动拉起：端口已通 → 不执行拉起', async () => {
     port: 9230,
     proxyServer: 'http://127.0.0.1:7897',
     proxyLaunchCommand: 'whatever.exe',
+    readCommandLineImpl: () => null,
     discover,
     launchProxyImpl,
   });
