@@ -143,3 +143,96 @@ test('collectLargeImageSrcs 不依赖语义选择器', async () => {
   // 语义选择器在这个 fixture 里全都返回空，collectLargeImageSrcs 仍应拿到图
   assert.ok(true);
 });
+
+// ── 回归：检测阶段的抛错不得跳过兜底（2026-11-18 实测缺陷）───────────────
+//
+// 上一组测试覆盖的是「user 消息**不存在**」的情形——那条路径走
+// `if (cursor && !user) return {ready:false}`，**不抛错**，所以能顺利走到兜底。
+//
+// 但当天真机是另一种情形：`data-chatgpt-search-unit-key` 属性**被改版删了**，
+// 于是 user 元素存在、属性却是 undefined ≠ replyTo.userKey，代码在
+//   chatgpt.mjs L878  throw new Error('Current user message does not match...')
+// 处抛错。而外层的 catch 原本写着 `if (!reloaded) throw error;` ——
+// **第一次抛错就直接逃逸**，把循环外那两层兜底（sweep / 产物扫描）全跳过了。
+//
+// 症状正是当天看到的：`stage: "wait"`, `sent: true`, `outputs: []`,
+// `ERR_CDP_EVALUATION / Current user message does not match the image request`。
+// 图明明在 blob: URL 里，却一张都拿不回来（实测 2/2 全灭）。
+//
+// 修法：catch 里不再逃逸，记下 firstStateError 后 break，交给兜底层；
+// 只有兜底也失败才用该错误作为最终原因。
+test('回归：user 消息 userKey 不匹配（属性被改版删除）仍能靠产物兜底取回图', async (t) => {
+  const dir = await mkdtemp(join(tmpdir(), 'chatgpt-key-mismatch-'));
+  t.after(() => rm(dir, { recursive: true, force: true }));
+  const output = join(dir, 'out.png');
+
+  const bigImg = {
+    naturalWidth: 1024,
+    naturalHeight: 1536,
+    alt: '',
+    src: 'blob:https://chatgpt.com/generated-mismatch',
+  };
+  // user 元素存在，但没有 data-chatgpt-search-unit-key（改版后属性消失）
+  const userEl = {
+    getAttribute: () => undefined,
+    compareDocumentPosition: () => 0,
+    closest: () => null,
+  };
+  const document = {
+    querySelectorAll: (sel) => (sel === SEL.userMsg ? [userEl] : sel === 'img' ? [bigImg] : []),
+    body: { innerText: '' },
+  };
+
+  let fetched = 0;
+  const context = {
+    document,
+    location: { href: 'https://chatgpt.com/c/x' },
+    AbortSignal,
+    Uint8Array,
+    Set,
+    JSON,
+    btoa: (value) => Buffer.from(value, 'binary').toString('base64'),
+    setTimeout,
+    clearTimeout,
+    fetch: async () => {
+      fetched += 1;
+      return new Response(png, { status: 200, headers: { 'content-type': 'image/png' } });
+    },
+    Response,
+  };
+  const p = {
+    evaluate: async (expression) => vm.runInNewContext(expression, context),
+    url: async () => 'https://chatgpt.com/c/x',
+  };
+
+  await waitAndSaveImage(p, output, 3000, { replyTo, recoveryMs: 0, beforeSrcs: [] });
+  assert.deepEqual(await readFile(output), png, '产物兜底必须把图救回来，不能被检测期抛错短路');
+  assert.equal(fetched > 0, true, '兜底应当真的去下载那张图');
+});
+
+test('回归：检测期抛错且兜底也无图时，失败原因要保留真实错误码', async (t) => {
+  const dir = await mkdtemp(join(tmpdir(), 'chatgpt-key-mismatch-fail-'));
+  t.after(() => rm(dir, { recursive: true, force: true }));
+  const output = join(dir, 'out.png');
+
+  const userEl = { getAttribute: () => undefined, compareDocumentPosition: () => 0, closest: () => null };
+  const document = {
+    querySelectorAll: (sel) => (sel === SEL.userMsg ? [userEl] : []),
+    body: { innerText: '' },
+  };
+  const p = {
+    evaluate: async (expression) =>
+      vm.runInNewContext(expression, { document, location: { href: 'https://chatgpt.com/c/x' } }),
+    url: async () => 'https://chatgpt.com/c/x',
+  };
+
+  await assert.rejects(
+    () => waitAndSaveImage(p, output, 1200, { replyTo, recoveryMs: 0, beforeSrcs: [] }),
+    (error) => {
+      // 关键：不能只报一句泛泛的 IMAGE_TIMEOUT，必须说明是「语义结构认不出」
+      assert.equal(error.code, 'IMAGE_STATE_UNRECOGNIZED');
+      assert.match(error.message, /Current user message does not match|does not match/);
+      return true;
+    },
+  );
+});
