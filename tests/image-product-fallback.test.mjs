@@ -16,7 +16,7 @@ import vm from 'node:vm';
 import { mkdtemp, rm, writeFile, readFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { waitAndSaveImage, collectLargeImageSrcs } from '../lib/chatgpt.mjs';
+import { waitAndSaveImage, collectLargeImageSrcs, probeProductImage } from '../lib/chatgpt.mjs';
 import { SEL } from '../lib/selectors.mjs';
 
 const png = Buffer.from(
@@ -370,4 +370,60 @@ test('回归：产物已存在时提前回收，不等满 timeout', async (t) =>
   assert.deepEqual(await readFile(output), png, '图必须被取回');
   assert.equal(fetched > 0, true, '必须真的下载');
   assert.ok(elapsed < 5000, `应在图出现的下一轮就返回（实测 ${elapsed}ms），而不是等满 20s timeout`);
+});
+
+// ── 回归：参考图与生成图尺寸相同时，必须选生成图 ────────────────────────
+//
+// 2026-11-18 真机实测：上传参考图后，页面上有两张**尺寸完全相同**的大图：
+//   { w:1086, h:1448, alt:"User attachment" }     ← 用户上传的输入图
+//   { w:1086, h:1448, alt:"Generated image 1" }   ← 真正要的生成结果
+// 原实现只按面积降序取第一张，面积相等时实测 "User attachment" 排在前面，
+// 于是把**参考图当答案**存下去 —— 静默的错图，比失败更糟（看起来成功了）。
+test('回归：尺寸相同时选生成图，不选上传的参考图', async () => {
+  const attachment = {
+    naturalWidth: 1086,
+    naturalHeight: 1448,
+    alt: 'User attachment',
+    src: 'blob:https://chatgpt.com/attachment-ref',
+  };
+  const generated = {
+    naturalWidth: 1086,
+    naturalHeight: 1448,
+    alt: 'Generated image 1',
+    src: 'blob:https://chatgpt.com/generated-real',
+  };
+  // 故意把参考图放在 DOM 前面（实测就是这个顺序）
+  const document = { querySelectorAll: (sel) => (sel === 'img' ? [attachment, generated] : []) };
+  const page = {
+    evaluate: async (expression) => vm.runInNewContext(expression, { document, Set, JSON }),
+  };
+
+  const result = await probeProductImage(page, { beforeSrcs: [], minSide: 300 });
+  assert.equal(result.src, 'blob:https://chatgpt.com/generated-real', '必须选生成图');
+  assert.match(result.alt, /Generated image/);
+  assert.equal(result.rank, undefined, 'rank 是内部字段，不必透出');
+});
+
+test('回归：只有参考图时也不会误选（明确标记为附件）', async () => {
+  const attachment = {
+    naturalWidth: 1086,
+    naturalHeight: 1448,
+    alt: 'User attachment',
+    src: 'blob:https://chatgpt.com/only-ref',
+  };
+  const document = { querySelectorAll: (sel) => (sel === 'img' ? [attachment] : []) };
+  const page = { evaluate: async (e) => vm.runInNewContext(e, { document, Set, JSON }) };
+  const result = await probeProductImage(page, { beforeSrcs: [], minSide: 300 });
+  // 仍然会返回（避免完全没结果），但要能看出它是附件
+  assert.equal(result.src, 'blob:https://chatgpt.com/only-ref');
+  assert.match(result.alt, /User attachment/);
+});
+
+test('回归：无 alt 标注时按面积降序（保持旧行为）', async () => {
+  const big = { naturalWidth: 1087, naturalHeight: 1447, alt: '', src: 'blob:https://big' };
+  const small = { naturalWidth: 400, naturalHeight: 400, alt: '', src: 'blob:https://small' };
+  const document = { querySelectorAll: (sel) => (sel === 'img' ? [small, big] : []) };
+  const page = { evaluate: async (e) => vm.runInNewContext(e, { document, Set, JSON }) };
+  const result = await probeProductImage(page, { beforeSrcs: [], minSide: 300 });
+  assert.equal(result.src, 'blob:https://big', '无标注时仍按面积取最大');
 });
