@@ -236,3 +236,72 @@ test('回归：检测期抛错且兜底也无图时，失败原因要保留真�
     },
   );
 });
+
+// ── 回归：检测失败后必须**继续等待**，不能用 break 提前放弃 ──────────────
+//
+// 2026-11-18 实测第二个缺陷（修第一个缺陷时引入）：
+//   把 catch 里的 `throw error` 改成 `firstStateError = error; break;` 之后，
+//   错误码确实变好了，但 **break 立即跳出循环，等于放弃了所有等待**。
+//   图是异步生成的，跳出那一刻页面上还没有图，兜底扫到空 → 仍然失败。
+//   实测 2/2 全灭，重新打开那两个会话却都能看到完整的 1087x1447 生成图。
+//
+// 本测试用「图在第 N 次 evaluate 之后才出现」来模拟异步生成，要求：
+//   尽管检测分支从第一次起就抛错，最终仍要把后来出现的图收回来。
+test('回归：检测期持续抛错时，仍会等到图出现并回收（不能用 break 提前放弃）', async (t) => {
+  const dir = await mkdtemp(join(tmpdir(), 'chatgpt-late-image-'));
+  t.after(() => rm(dir, { recursive: true, force: true }));
+  const output = join(dir, 'out.png');
+
+  let evalCount = 0;
+  let fetched = 0;
+  // 前 4 次 evaluate 页面上都没有图；第 5 次起「生成完成」
+  const IMAGE_APPEARS_AT = 5;
+  const bigImg = {
+    naturalWidth: 1087,
+    naturalHeight: 1447,
+    alt: 'Generated image 1',
+    src: 'blob:https://chatgpt.com/late-generated',
+  };
+  const userEl = {
+    getAttribute: () => 'wrong-key', // 与 replyTo.userKey 不匹配 → 每次都抛错
+    compareDocumentPosition: () => 0,
+    closest: () => null,
+  };
+
+  const p = {
+    evaluate: async (expression) => {
+      evalCount += 1;
+      const hasImage = evalCount >= IMAGE_APPEARS_AT;
+      const document = {
+        querySelectorAll: (sel) => {
+          if (sel === SEL.userMsg) return [userEl];
+          if (sel === 'img') return hasImage ? [bigImg] : [];
+          return [];
+        },
+        body: { innerText: '' },
+      };
+      return vm.runInNewContext(expression, {
+        document,
+        location: { href: 'https://chatgpt.com/c/late' },
+        AbortSignal,
+        Uint8Array,
+        Set,
+        JSON,
+        btoa: (value) => Buffer.from(value, 'binary').toString('base64'),
+        setTimeout,
+        clearTimeout,
+        fetch: async () => {
+          fetched += 1;
+          return new Response(png, { status: 200, headers: { 'content-type': 'image/png' } });
+        },
+        Response,
+      });
+    },
+    url: async () => 'https://chatgpt.com/c/late',
+  };
+
+  await waitAndSaveImage(p, output, 6000, { replyTo, recoveryMs: 0, beforeSrcs: [] });
+  assert.deepEqual(await readFile(output), png, '必须等到图出现并回收，而不是第一次检测失败就放弃');
+  assert.equal(fetched > 0, true, '应当真的下载了那张图');
+  assert.equal(evalCount >= IMAGE_APPEARS_AT, true, '应当重试到图出现的轮次');
+});
