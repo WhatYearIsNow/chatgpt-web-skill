@@ -305,3 +305,69 @@ test('回归：检测期持续抛错时，仍会等到图出现并回收（不�
   assert.equal(fetched > 0, true, '应当真的下载了那张图');
   assert.equal(evalCount >= IMAGE_APPEARS_AT, true, '应当重试到图出现的轮次');
 });
+
+// ── 回归：图已生成时必须**立刻**取回，不必等满 timeout ────────────────────
+//
+// 2026-11-18 实测：语义检测失效后，图约 1 分钟就已生成好，但旧结构只在
+// **deadline（默认 420s）之后**才轮到循环外的兜底，用户白等约 7 分钟。
+//
+// 修法：每轮语义检测失败后先做一次轻量产物探测，命中即取回。
+// 本测试要求：图在第 3 次 evaluate 出现，且**远早于** timeout(20s) 结束就返回。
+test('回归：产物已存在时提前回收，不等满 timeout', async (t) => {
+  const dir = await mkdtemp(join(tmpdir(), 'chatgpt-fast-recover-'));
+  t.after(() => rm(dir, { recursive: true, force: true }));
+  const output = join(dir, 'out.png');
+
+  let evalCount = 0;
+  let fetched = 0;
+  const IMAGE_APPEARS_AT = 3;
+  const bigImg = {
+    naturalWidth: 1087,
+    naturalHeight: 1447,
+    alt: 'Generated image 1',
+    src: 'blob:https://chatgpt.com/fast-recovered',
+  };
+  // 语义检测永远失败（模拟 UI 漂移）
+  const userEl = { getAttribute: () => 'wrong-key', compareDocumentPosition: () => 0, closest: () => null };
+
+  const t0 = Date.now();
+  const p = {
+    evaluate: async (expression) => {
+      evalCount += 1;
+      const hasImage = evalCount >= IMAGE_APPEARS_AT;
+      const document = {
+        querySelectorAll: (sel) => {
+          if (sel === SEL.userMsg) return [userEl];
+          if (sel === 'img') return hasImage ? [bigImg] : [];
+          return [];
+        },
+        body: { innerText: '' },
+      };
+      return vm.runInNewContext(expression, {
+        document,
+        location: { href: 'https://chatgpt.com/c/fast' },
+        AbortSignal,
+        Uint8Array,
+        Set,
+        JSON,
+        btoa: (v) => Buffer.from(v, 'binary').toString('base64'),
+        setTimeout,
+        clearTimeout,
+        fetch: async () => {
+          fetched += 1;
+          return new Response(png, { status: 200, headers: { 'content-type': 'image/png' } });
+        },
+        Response,
+      });
+    },
+    url: async () => 'https://chatgpt.com/c/fast',
+  };
+
+  // timeout 给 20s：若没有快速回收，就要等满 20s 才走兜底
+  await waitAndSaveImage(p, output, 20000, { replyTo, recoveryMs: 0, beforeSrcs: [] });
+  const elapsed = Date.now() - t0;
+
+  assert.deepEqual(await readFile(output), png, '图必须被取回');
+  assert.equal(fetched > 0, true, '必须真的下载');
+  assert.ok(elapsed < 5000, `应在图出现的下一轮就返回（实测 ${elapsed}ms），而不是等满 20s timeout`);
+});
