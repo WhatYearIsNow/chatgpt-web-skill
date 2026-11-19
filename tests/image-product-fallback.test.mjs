@@ -435,7 +435,11 @@ test('回归：无 alt 标注时按面积降序（保持旧行为）', async () 
   const document = { querySelectorAll: (sel) => (sel === 'img' ? [small, big] : []) };
   const page = { evaluate: async (e) => vm.runInNewContext(e, { document, Set, JSON }) };
   const result = await probeProductImage(page, { beforeSrcs: [], minSide: 300 });
-  assert.equal(result.src, 'blob:https://big', '无标注时仍按面积取最大');
+  // 第二轮外审 P0：多个无标注候选无法证明身份，不得按面积猜
+  assert.equal(result.eligible, false, '多个无标注候选时不得按面积猜身份');
+  assert.equal(result.src, null);
+  // 但候选仍要归档出来供诊断
+  assert.equal(result.count, 2);
 });
 
 // ── 2026-11-19 外审 P1：快速回收的触发条件 ────────────────────────────
@@ -462,9 +466,75 @@ test('取回失败要有可重试/不可重试分类', () => {
   assert.match(src, /function isPermanentFetchError/, '需要失败分类函数');
   assert.match(src, /IMAGE_FETCH_UNRECOVERABLE/, '不可重试的取回失败应有明确错误码');
   // HTTP 4xx（非可重试）应判永久
-  const fn = src.slice(src.indexOf('function isPermanentFetchError'));
-  const body = fn.slice(0, fn.indexOf('\n}\n') + 2);
-  assert.match(body, /Image download HTTP 4/, 'HTTP 4xx 要能被识别');
+  const fnStart = src.indexOf('function isPermanentFetchError');
+  const fnEnd = src.indexOf(String.fromCharCode(10) + '}', fnStart);
+  const body = src.slice(fnStart, fnEnd + 2);
+  assert.match(body, /Image download HTTP/, 'HTTP 状态码要能被识别');
+  // 第二轮外审指出：范围正则 4(0[0-9]|...) 把 408 也吃进去了。
+  // 现在必须显式列集合，且 408/425/429 一律可重试。
+  assert.ok(body.includes('permanent.has'), '应显式用集合判定');
+  assert.ok(!body.includes('4(0[0-9]'), '不得再用会吃掉 408 的范围正则');
   // 暂时性失败（blob 未就绪）不得被判永久
   assert.match(body, /return false/, '其余应视为暂时性失败');
+});
+
+// ── 第二轮外审 P0：无 alt 参考图仍可能成为产物 ──────────────────────────
+//
+// 外审原话：「排序资格仍然被当成了身份资格」。
+// 第一轮修成 `eligible = rank < 2` 仍放行了 rank=1（无 alt）；
+// 若参考图没有 `User attachment` 标记（平台改文案），它会以 rank=1 成为 best 被保存。
+//
+// 新规则：eligible 必须是 rank===0（alt 明确是 Generated image）；
+// 仅当「没有任何附件候选」且「无标注候选唯一」时才降级采用无标注候选。
+test('反例：无 alt 且面积更大的参考图不得成为可保存产物（外审 P0）', async () => {
+  // 参考图无 alt、尺寸比生成图更大 —— 按面积排序它会赢
+  const refNoAlt = { naturalWidth: 2000, naturalHeight: 3000, alt: '', src: 'blob:https://ref-noalt' };
+  const generated = {
+    naturalWidth: 1087,
+    naturalHeight: 1447,
+    alt: 'Generated image 1',
+    src: 'blob:https://gen',
+  };
+  const document = { querySelectorAll: (sel) => (sel === 'img' ? [refNoAlt, generated] : []) };
+  const page = { evaluate: async (e) => vm.runInNewContext(e, { document, Set, JSON }) };
+  const r = await probeProductImage(page, { beforeSrcs: [], minSide: 300 });
+
+  assert.equal(r.eligibleSrc, 'blob:https://gen', '必须选明确标记的生成图，不能选无 alt 的大图');
+  assert.equal(r.eligibility, 'explicit-generated');
+});
+
+test('反例：无 alt 的参考图 + 无标注生成图（无明确附件标记）时不得静默采用', async () => {
+  // 两张都没有任何标记：无法证明哪张是生成图 → 必须拒绝而不是按面积猜
+  const a = { naturalWidth: 2000, naturalHeight: 3000, alt: '', src: 'blob:https://a' };
+  const b = { naturalWidth: 1087, naturalHeight: 1447, alt: '', src: 'blob:https://b' };
+  const document = { querySelectorAll: (sel) => (sel === 'img' ? [a, b] : []) };
+  const page = { evaluate: async (e) => vm.runInNewContext(e, { document, Set, JSON }) };
+  const r = await probeProductImage(page, { beforeSrcs: [], minSide: 300 });
+  assert.equal(r.eligible, false, '多个无标注候选无法证明身份时必须拒绝');
+  assert.equal(r.eligibleSrc, null);
+  assert.equal(r.hasIneligibleCandidates, true);
+});
+
+test('兼容：唯一无标注候选且无附件标记时采用它（alt 文案整体失效的 UI 改版）', async () => {
+  const only = { naturalWidth: 1087, naturalHeight: 1447, alt: '', src: 'blob:https://only' };
+  const document = { querySelectorAll: (sel) => (sel === 'img' ? [only] : []) };
+  const page = { evaluate: async (e) => vm.runInNewContext(e, { document, Set, JSON }) };
+  const r = await probeProductImage(page, { beforeSrcs: [], minSide: 300 });
+  assert.equal(r.eligible, true, '唯一无标注候选应可用（否则 UI 改版时彻底出不了图）');
+  assert.equal(r.eligibility, 'unlabeled-only-candidate');
+});
+
+test('附件候选存在时，无标注候选一律不得采用', async () => {
+  const refMarked = {
+    naturalWidth: 1086,
+    naturalHeight: 1448,
+    alt: 'User attachment',
+    src: 'blob:https://ref',
+  };
+  const unknown = { naturalWidth: 1087, naturalHeight: 1447, alt: '', src: 'blob:https://unknown' };
+  const document = { querySelectorAll: (sel) => (sel === 'img' ? [refMarked, unknown] : []) };
+  const page = { evaluate: async (e) => vm.runInNewContext(e, { document, Set, JSON }) };
+  const r = await probeProductImage(page, { beforeSrcs: [], minSide: 300 });
+  assert.equal(r.eligible, false, '有明确附件时，无标注那张无法排除是参考图 → 必须拒绝');
+  assert.equal(r.attachmentOnly, true);
 });
