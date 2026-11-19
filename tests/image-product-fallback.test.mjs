@@ -16,6 +16,8 @@ import vm from 'node:vm';
 import { mkdtemp, rm, writeFile, readFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { readFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
 import { waitAndSaveImage, collectLargeImageSrcs, probeProductImage } from '../lib/chatgpt.mjs';
 import { SEL } from '../lib/selectors.mjs';
 
@@ -434,4 +436,35 @@ test('回归：无 alt 标注时按面积降序（保持旧行为）', async () 
   const page = { evaluate: async (e) => vm.runInNewContext(e, { document, Set, JSON }) };
   const result = await probeProductImage(page, { beforeSrcs: [], minSide: 300 });
   assert.equal(result.src, 'blob:https://big', '无标注时仍按面积取最大');
+});
+
+// ── 2026-11-19 外审 P1：快速回收的触发条件 ────────────────────────────
+//
+// 外审指出：原实现把快速探测只放在 catch 分支，但语义检测可能
+// **正常返回却静默误判**（一直说还没 ready，其实图已出现）；
+// 此时不进 catch，探测永不执行，白等到超时。
+test('快速探测不再只依赖 catch：有静默误判的兜底路径', () => {
+  const src = readFileSync(fileURLToPath(new URL('../lib/chatgpt.mjs', import.meta.url)), 'utf8');
+  const fnStart = src.indexOf('export async function waitAndSaveImage');
+  const fnBody = src.slice(fnStart, src.indexOf('\n}\n', fnStart));
+  // 必须有「状态停滞」判据
+  assert.match(fnBody, /lastStateChangeAt/, '需要跟踪语义状态最后变化时间');
+  assert.match(fnBody, /stateStalled/, '需要有状态停滞判定');
+  assert.match(fnBody, /STALL_MS/, '停滞阈值必须是显式常量');
+  // 探测条件必须同时覆盖 catch 与停滞
+  assert.match(fnBody, /isCatchBranch \|\|/, '探测条件要同时覆盖 catch 与停滞两条路径');
+  // 不能退回「只在 catch 里探测」
+  assert.match(fnBody, /shouldProbeNow/, '应有统一的探测决策');
+});
+
+test('取回失败要有可重试/不可重试分类', () => {
+  const src = readFileSync(fileURLToPath(new URL('../lib/chatgpt.mjs', import.meta.url)), 'utf8');
+  assert.match(src, /function isPermanentFetchError/, '需要失败分类函数');
+  assert.match(src, /IMAGE_FETCH_UNRECOVERABLE/, '不可重试的取回失败应有明确错误码');
+  // HTTP 4xx（非可重试）应判永久
+  const fn = src.slice(src.indexOf('function isPermanentFetchError'));
+  const body = fn.slice(0, fn.indexOf('\n}\n') + 2);
+  assert.match(body, /Image download HTTP 4/, 'HTTP 4xx 要能被识别');
+  // 暂时性失败（blob 未就绪）不得被判永久
+  assert.match(body, /return false/, '其余应视为暂时性失败');
 });
