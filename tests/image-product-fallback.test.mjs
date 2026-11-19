@@ -404,7 +404,7 @@ test('回归：尺寸相同时选生成图，不选上传的参考图', async ()
   assert.equal(result.rank, undefined, 'rank 是内部字段，不必透出');
 });
 
-test('回归：只有参考图时也不会误选（明确标记为附件）', async () => {
+test('回归：只有参考图时不得产出可保存候选（外审 P0，2026-11-19）', async () => {
   const attachment = {
     naturalWidth: 1086,
     naturalHeight: 1448,
@@ -414,9 +414,17 @@ test('回归：只有参考图时也不会误选（明确标记为附件）', as
   const document = { querySelectorAll: (sel) => (sel === 'img' ? [attachment] : []) };
   const page = { evaluate: async (e) => vm.runInNewContext(e, { document, Set, JSON }) };
   const result = await probeProductImage(page, { beforeSrcs: [], minSide: 300 });
-  // 仍然会返回（避免完全没结果），但要能看出它是附件
-  assert.equal(result.src, 'blob:https://chatgpt.com/only-ref');
-  assert.match(result.alt, /User attachment/);
+
+  // 原断言（result.src === 参考图）把 bug 固化成了期望行为：
+  // found=true + src=参考图，调用方只判 found 就会把参考图当生成结果落盘。
+  // 现在要求：明确是附件的候选**一律不可用于保存**。
+  assert.equal(result.eligible, false, '参考图不得成为可保存候选');
+  assert.equal(result.eligibleSrc, null, '不得给出可保存的 src');
+  assert.equal(result.src, null, 'src 也只能来自可保存候选');
+  assert.equal(result.attachmentOnly, true, '应能识别「只看到参考图」这种状态');
+  // found 仍表示「页面上确实有候选」（用于区分「什么都没有」与「只有附件」）
+  assert.equal(result.found, true);
+  assert.equal(result.count, 1);
 });
 
 test('回归：无 alt 标注时按面积降序（保持旧行为）', async () => {
